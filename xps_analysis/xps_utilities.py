@@ -7,4 +7,4 @@ def test():
     """
     Test function
     """
-    print("This is the xps_utilities module!")
+    print("You have accessed the xps_utilities module!")
