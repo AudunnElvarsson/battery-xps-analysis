@@ -10,7 +10,7 @@ def main():
     Main function to control what runs.
     """
     project_folder = r"c:/Users/audun/OneDrive - Chalmers/Documents/Research/" \
-                     r"1. Improving XPS Analysis Methods"
+                     r"1_Improving_XPS_Analysis_Methods"
     xu.convert_all_vms_in_project(project_folder)
 
 

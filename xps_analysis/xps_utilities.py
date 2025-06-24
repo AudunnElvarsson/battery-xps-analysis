@@ -39,7 +39,7 @@ def convert_all_vms_in_project(project_folder):
     Parameters:
         project_folder (str): Path to the root of the project folder.
     """
-    data_folder = os.path.join(project_folder, "Data")
+    data_folder = os.path.join(project_folder, "1_data")
     if not os.path.isdir(data_folder):
         print(f"Data folder not found: {data_folder}")
         return
@@ -47,16 +47,20 @@ def convert_all_vms_in_project(project_folder):
         session_path = os.path.join(data_folder, session)
         if not os.path.isdir(session_path):
             continue
-        vms_folder = os.path.join(session_path, "VMS files")
-        txt_folder = os.path.join(session_path, "TXT files")
+        processed_folder = os.path.join(session_path, "1_processed_data")
+        if not os.path.isdir(processed_folder):
+            print(f"No '1_processed_data' folder in session '{session}'")
+            continue
+        vms_folder = os.path.join(processed_folder, "vms_files")
+        txt_folder = os.path.join(processed_folder, "txt_files")
         if not os.path.isdir(vms_folder):
-            print(f"No 'VMS files' folder in session '{session}'")
+            print(f"No 'vms_files' folder in session '{session}'")
             continue
         if os.path.exists(txt_folder):
-            print(f"TXT files folder already exists in session '{session}'. Skipping conversion.")
+            print(f"Skipping conversion, txt folder already exists in session '{session}'")
             continue
         os.makedirs(txt_folder, exist_ok=True)
-        print(f"Converting VMS files in session '{session}' to TXT files.")
+        print(f"Converting vms files to txt files in session '{session}'")
         for fname in os.listdir(vms_folder):
             if fname.lower().endswith(".vms"):
                 vms_path = os.path.join(vms_folder, fname)
