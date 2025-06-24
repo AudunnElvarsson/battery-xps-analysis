@@ -31,13 +31,32 @@ def convert_vms_to_txt(input_path, output_path):
 
 def convert_all_vms_in_project(project_folder):
     """
-    Convert all .vms files in all measurement sessions in the Data folder of a project. For each
-    session in the 'Data' subfolder of the project, this function looks for a folder named 'VMS
-    files'. It converts all .vms files in that folder to .txt files, creates a new folder called
-    'TXT files' in the same session folder, and writes the converted .txt files there.
+    Convert all .vms files in all measurement sessions in the 1_data folder of a project.
+
+    For each session in the '1_data' subfolder of the project, this function looks for a folder
+    named '1_processed_data'. Inside '1_processed_data', it looks for a folder named 'vms_files'.
+    It converts all .vms files in that folder to .txt files, creates a new folder called 'txt_files'
+    in the same '1_processed_data' folder, and writes the converted .txt files there. If the
+    'txt_files' folder already exists, the function skips conversion for that session.
 
     Parameters:
         project_folder (str): Path to the root of the project folder.
+
+    Folder structure example:
+        project_folder/
+            1_data/
+                Session1/
+                    1_processed_data/
+                        vms_files/
+                            file1.vms
+                            file2.vms
+                        txt_files/
+                            file1.txt
+                            file2.txt
+                Session2/
+                    1_processed_data/
+                        vms_files/
+                        txt_files/
     """
     data_folder = os.path.join(project_folder, "1_data")
     if not os.path.isdir(data_folder):
