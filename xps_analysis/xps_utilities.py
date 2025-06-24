@@ -6,7 +6,7 @@ Functions:
     convert_vms_to_txt(input_path, output_path):
         Converts a single .vms file to a .txt file.
     convert_all_vms_in_project(project_folder):
-        Converts all .vms files in all measurement sessions in the Data folder of a project.
+        Converts all .vms files in all measurement sessions in the data folder of a project.
 """
 
 import os
