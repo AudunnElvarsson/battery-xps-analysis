@@ -1,5 +1,5 @@
 version = 1
-requires-python = ">=3.13"
+requires-python = ">=3.13.1"
 
 [[package]]
 name = "appnope"
@@ -30,7 +30,7 @@ wheels = [
 
 [[package]]
 name = "battery-xps-analysis"
-version = "0.1.0"
+version = "1.0.1"
 source = { virtual = "." }
 dependencies = [
     { name = "ipykernel" },
