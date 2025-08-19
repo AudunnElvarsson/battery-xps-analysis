@@ -111,6 +111,8 @@ def read_report(file_path):
         return None
 
     header, raw_header = _clean_header(lines[header_idx])
+    # Rename 'Position' header to 'Binding Energy (eV)'
+    header = ["Binding Energy (eV)" if h == "Position" else h for h in header]
     table_data = _parse_table_rows(lines, header_idx, header, raw_header)
     name_idx = header.index("Comp Label")
     groups = _group_rows_by_name(table_data, name_idx)

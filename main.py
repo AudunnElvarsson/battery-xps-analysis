@@ -13,13 +13,11 @@ def convert_all_vms(project_folder):
     """
     xu.convert_all_vms_in_project(project_folder)
 
-def read_comp_report(file_path):
+def plot_comp_report(report_dict, y_column="FWHM"):
     """
-    Read the composition report from the specified file path.
+    Plot the composition report from the specified file path.
     """
-    report_dict = xp.read_report(file_path)
-    print(report_dict)
-    xplot.plot_positions(report_dict)
+    xplot.plot_fit_report(report_dict, y_column=y_column)
 
 
 def main():
@@ -28,7 +26,7 @@ def main():
     """
     # Flags to control execution
     run_convert_all_vms_in_project = False
-    run_read_comp_report = True
+    run_plot_comp_report = True
 
     project_folder = r"c:/Users/audun/OneDrive - Chalmers/Documents/Research/" \
                      r"1_Improving_XPS_Analysis_Methods/"
@@ -38,8 +36,9 @@ def main():
     if run_convert_all_vms_in_project:
         convert_all_vms(project_folder)
 
-    if run_read_comp_report:
-        read_comp_report(file_path)
+    if run_plot_comp_report:
+        report_dict = xp.read_report(file_path)
+        plot_comp_report(report_dict, y_column="BE")
 
 
 if __name__ == "__main__":
