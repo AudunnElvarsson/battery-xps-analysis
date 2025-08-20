@@ -2,6 +2,7 @@
 This is to test the xps_analysis package.
 """
 
+import matplotlib.pyplot as plt
 import xps_analysis.xps_utilities as xu
 import xps_analysis.xps_processing as xp
 import xps_analysis.xps_plot as xplot
@@ -13,11 +14,15 @@ def convert_all_vms(project_folder):
     """
     xu.convert_all_vms_in_project(project_folder)
 
-def plot_comp_report(report_dict, y_column="FWHM"):
+
+def fit_report_parameters(report_dict, fit_param):
     """
     Plot the composition report from the specified file path.
     """
-    xplot.plot_fit_report(report_dict, y_column=y_column)
+    custom_kwargs = {"linestyle": "-"}
+    fig, axes = plt.subplots(figsize=(8, 6))
+    fig.set_tight_layout(True)
+    xplot.plot_fit_report(report_dict, axis=axes, fit_param=fit_param, kwargs=custom_kwargs)
 
 
 def main():
@@ -26,7 +31,7 @@ def main():
     """
     # Flags to control execution
     run_convert_all_vms_in_project = False
-    run_plot_comp_report = True
+    run_plot_fit_report = True
 
     project_folder = r"c:/Users/audun/OneDrive - Chalmers/Documents/Research/" \
                      r"1_Improving_XPS_Analysis_Methods/"
@@ -36,9 +41,9 @@ def main():
     if run_convert_all_vms_in_project:
         convert_all_vms(project_folder)
 
-    if run_plot_comp_report:
+    if run_plot_fit_report:
         report_dict = xp.read_report(file_path)
-        plot_comp_report(report_dict, y_column="BE")
+        fit_report_parameters(report_dict, fit_param="BE")
 
 
 if __name__ == "__main__":
