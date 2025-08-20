@@ -157,7 +157,8 @@ def read_fit_report_file(file_path):
 
 def read_fit_spectrum_file(file_path):
     """
-    Reads an XPS spectrum file and returns a dictionary with processed column names as keys and numpy arrays as values.
+    Reads an XPS spectrum file and returns a dictionary with processed column names as keys and
+    numpy arrays as values.
 
     Parameters:
         file_path (str): Path to the spectrum file.
