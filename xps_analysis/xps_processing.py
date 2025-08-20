@@ -87,10 +87,9 @@ def read_report(file_path):
     """
     Reads the first table in an XPS report file and parses it into a dictionary of numpy arrays.
 
-    The dictionary keys are the table headers, and the values are 2D numpy arrays, where each row
-    corresponds to a unique entry (e.g., a chemical species) and each column corresponds to a header.
-    The third dimension is split when the 'Name' field repeats, so each group represents a set of unique names.
-    Duplicate 'Name' columns and their data are ignored.
+    The dictionary keys are the table headers, and the values are 2D numpy arrays, where each column
+    corresponds to a unique entry (e.g., a chemical species) and each row corresponds to a fit
+    parameter.
 
     Parameters:
         file_path (str): Path to the report file to read.
