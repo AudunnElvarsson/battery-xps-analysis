@@ -37,7 +37,9 @@ def fit_spectrum_parameters(spectrum_dict):
         gridspec_kw={"height_ratios": [1, 4], "hspace": 0},
     )
     fig.set_tight_layout(True)
-    xplot.plot_fit_spectrum(spectrum_dict, axis=axes, normalised_residual=True, kwargs=custom_kwargs)
+    xplot.plot_fit_spectrum(
+        spectrum_dict, axis=axes, normalised_residual=True, kwargs=custom_kwargs
+    )
 
 
 def main():
@@ -49,11 +51,17 @@ def main():
     run_plot_fit_report = True
     run_plot_fit_spectrum = True
 
-    project_folder = r"c:/Users/audun/OneDrive - Chalmers/Documents/Research/" \
-                     r"1_Improving_XPS_Analysis_Methods/"
+    project_folder = (
+        r"c:/Users/audun/OneDrive - Chalmers/Documents/Research/"
+        r"1_Improving_XPS_Analysis_Methods/"
+    )
     experiment_folder = r"1_data/250619_Gr_XPS_delithiated_and_lithiated/3_output/"
-    fit_report_file = project_folder + experiment_folder + r"line_scan_delithiated_fit_report.txt"
-    fit_spectrum_file = project_folder + experiment_folder + r"line_scan_delithiated_fit_spectrum_0.txt"
+    fit_report_file = (
+        project_folder + experiment_folder + r"line_scan_delithiated_fit_report.txt"
+    )
+    fit_spectrum_file = (
+        project_folder + experiment_folder + r"line_scan_delithiated_fit_spectrum_0.txt"
+    )
 
     if run_convert_all_vms_in_project:
         convert_all_vms(project_folder)

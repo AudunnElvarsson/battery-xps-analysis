@@ -2,9 +2,9 @@
 Module that reads and processes xps data from a file.
 """
 
-
 import os
 import numpy as np
+
 
 def _find_header(lines, startswith_tuple, required_substring=None):
     """Return header line and its index from file, matching start and optional substring."""
@@ -14,10 +14,11 @@ def _find_header(lines, startswith_tuple, required_substring=None):
                 return line, i
     return None, None
 
+
 def _parse_data_rows(lines, header_idx, columns, skip_empty=True, break_on_empty=False):
     """Parse tab-separated data rows into dict of lists."""
     data_dict = {col: [] for col in columns}
-    for line in lines[header_idx+1:]:
+    for line in lines[header_idx + 1 :]:
         if not line.strip():
             if break_on_empty:
                 break
@@ -32,6 +33,7 @@ def _parse_data_rows(lines, header_idx, columns, skip_empty=True, break_on_empty
             except ValueError:
                 data_dict[col].append(val)
     return data_dict
+
 
 def _convert_data_types(data_dict):
     """Convert lists to numpy arrays with appropriate dtype."""
@@ -57,6 +59,7 @@ def read_fit_report_file(file_path):
     Returns:
         dict: Dictionary with headers as keys and 2D numpy arrays as values.
     """
+
     def _clean_header(header_line):
         """Remove duplicate 'Name' columns from header."""
         raw_header = [h.strip() for h in header_line.split("\t") if h.strip()]
@@ -89,6 +92,7 @@ def read_fit_report_file(file_path):
 
     def _table_to_dict(groups, header):
         """Convert grouped table rows to dictionary of numpy arrays."""
+
         def parse_value(val):
             # If value is of form 'x , y', convert to [x, y] as floats
             if "," in val:
@@ -122,7 +126,9 @@ def read_fit_report_file(file_path):
         lines = f.readlines()
 
     # Find header line and index
-    header_line, header_idx = _find_header(lines, ("Name",), required_substring="Comp Label")
+    header_line, header_idx = _find_header(
+        lines, ("Name",), required_substring="Comp Label"
+    )
     if header_idx is None:
         print("No table header found.")
         return None
@@ -132,7 +138,7 @@ def read_fit_report_file(file_path):
 
     # Parse table rows (report-specific logic)
     table_data = []
-    for line in lines[header_idx+1:]:
+    for line in lines[header_idx + 1 :]:
         if not line.strip():
             break
         row_raw = [v.strip() for v in line.split("\t") if v.strip()]
@@ -148,6 +154,7 @@ def read_fit_report_file(file_path):
     result_dict = _table_to_dict(groups, header)
     return result_dict
 
+
 def read_fit_spectrum_file(file_path):
     """
     Reads an XPS spectrum file and returns a dictionary with processed column names as keys and numpy arrays as values.
@@ -158,16 +165,17 @@ def read_fit_spectrum_file(file_path):
     Returns:
         dict: Dictionary with processed column names as keys and numpy arrays of data as values.
     """
+
     def _rename_spectrum_keys(data_dict):
         """Rename keys for consistency and clarity."""
         renamed = {}
         for col, arr in data_dict.items():
-            if col.startswith('Normalised_Residual'):
-                new_key = 'Normalised Residual'
-            elif col.startswith('CPS'):
-                new_key = 'Measured'
+            if col.startswith("Normalised_Residual"):
+                new_key = "Normalised Residual"
+            elif col.startswith("CPS"):
+                new_key = "Measured"
             else:
-                new_key = col.split('_', 1)[0] if '_' in col else col
+                new_key = col.split("_", 1)[0] if "_" in col else col
             renamed[new_key] = arr
         return renamed
 
@@ -180,7 +188,9 @@ def read_fit_spectrum_file(file_path):
         raise ValueError("No data header found in file.")
 
     columns = [col.strip() for col in header_line.split("\t")]
-    data_dict = _parse_data_rows(lines, header_idx, columns, skip_empty=True, break_on_empty=False)
+    data_dict = _parse_data_rows(
+        lines, header_idx, columns, skip_empty=True, break_on_empty=False
+    )
     data_dict = _convert_data_types(data_dict)
     renamed_dict = _rename_spectrum_keys(data_dict)
     return renamed_dict

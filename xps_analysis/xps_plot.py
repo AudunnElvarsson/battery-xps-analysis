@@ -1,10 +1,10 @@
-
 """
 Module for plotting XPS data.
 """
 
 import matplotlib.pyplot as plt
 import numpy as np
+
 
 # === Module-level helper functions ===
 def _update_plot_params(defaults, user_kwargs):
@@ -45,7 +45,7 @@ def plot_fit_report(report_dict, axis=None, fit_param="BE", kwargs=None):
         "BE": "Binding Energy (eV)",
         "Area": "Raw Area",
         "At Conc": "%At Conc",
-        "Goodness": "Goodness of Fit"
+        "Goodness": "Goodness of Fit",
     }
     col_full = col_map.get(fit_param, fit_param)
     names = np.array(report_dict.get("Name"), dtype=object)
@@ -56,8 +56,8 @@ def plot_fit_report(report_dict, axis=None, fit_param="BE", kwargs=None):
         x = np.arange(y_data.shape[1]) if y_data.ndim > 1 else np.arange(1)
         label = names[i][0] if isinstance(names[i], (list, np.ndarray)) else names[i]
         avg = np.mean([v for v in y if isinstance(v, (int, float, np.floating))])
-        line, = axis.plot(x, y, label=f"{label} (avg={avg:.2f})", **params)
-        axis.plot(x, [avg]*len(x), color=line.get_color(), alpha=0.7, linestyle=':')
+        (line,) = axis.plot(x, y, label=f"{label} (avg={avg:.2f})", **params)
+        axis.plot(x, [avg] * len(x), color=line.get_color(), alpha=0.7, linestyle=":")
 
     axis.set_xlabel("Experimental Variable")
     axis.set_ylabel(col_full)
@@ -65,7 +65,9 @@ def plot_fit_report(report_dict, axis=None, fit_param="BE", kwargs=None):
     plt.show()
 
 
-def plot_fit_spectrum(spectrum_dict, axis=None, x_axis="BE", kwargs=None, normalised_residual=False):
+def plot_fit_spectrum(
+    spectrum_dict, axis=None, x_axis="BE", kwargs=None, normalised_residual=False
+):
     """
     Plot the fit spectrum from the specified dictionary.
 
@@ -76,6 +78,7 @@ def plot_fit_spectrum(spectrum_dict, axis=None, x_axis="BE", kwargs=None, normal
         kwargs: dict of plot style arguments (optional).
         normalised_residual (bool): If True, plot 'Normalised Residual'; else plot 'Residual'.
     """
+
     def _get_x_axis(spectrum_dict, x_axis):
         """
         Return x data, label, and invert flag for spectrum plot.
@@ -128,9 +131,9 @@ def plot_fit_spectrum(spectrum_dict, axis=None, x_axis="BE", kwargs=None, normal
         axis[0].invert_xaxis()
     axis[0].set_ylabel("Residual")
     axis[0].legend()
-    axis[0].spines['bottom'].set_position(('data', 0))
+    axis[0].spines["bottom"].set_position(("data", 0))
     axis[0].set_xticks([])
     axis[0].set_xticklabels([])
     axis[1].xaxis.set_tick_params(labelbottom=True, bottom=True)
-    axis[1].spines['top'].set_visible(False)
+    axis[1].spines["top"].set_visible(False)
     plt.show()
