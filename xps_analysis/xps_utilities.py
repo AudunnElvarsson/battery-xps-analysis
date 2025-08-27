@@ -40,27 +40,23 @@ def convert_vms_to_txt(input_path, output_path):
         outfile.write(data)
 
 
-def convert_all_vms_in_project(project_folder):
+def convert_all_vms_in_project(data_folder):
     """Recursively convert all ``.vms`` files in a project's sessions.
 
-    The function looks for a ``1_data`` folder beneath ``project_folder`` and
-    iterates its subfolders (sessions). For each session it expects a
-    ``1_processed_data/vms_files`` directory containing ``.vms`` files. A new
-    sibling directory ``txt_files`` will be created and populated with the
-    converted files. If ``txt_files`` already exists the session is skipped to
-    avoid accidental re-processing.
+    The function looks for the ``data_folder`` and iterates its subfolders (sessions). For each
+    session it expects a ``1_processed_data/vms_files`` directory containing ``.vms`` files. A new
+    sibling directory ``txt_files`` will be created and populated with the converted files.
+    If ``txt_files`` already exists the session is skipped to avoid accidental re-processing.
 
     Parameters
     ----------
-    project_folder : str
-        Path to the root of the project directory containing the ``1_data``
-        folder.
+    data_folder : str
+        Path to the root of the data directory containing the sessions.
 
     Returns
     -------
     None
     """
-    data_folder = os.path.join(project_folder, "1_data")
     if not os.path.isdir(data_folder):
         print(f"Data folder not found: {data_folder}")
         return
