@@ -1,5 +1,14 @@
-"""
-Module that reads and processes xps data from a file.
+"""xps_processing
+-----------------
+
+Utilities for reading and converting XPS report and spectrum text files into
+Python structures suitable for analysis and plotting. Functions return
+dictionary-like mappings where keys are column/header names and values are
+numpy arrays (typically 1D or 2D arrays with dtype float or object).
+
+The module focuses on robust parsing of tab-separated text files produced by
+XPS fitting tools, handling common quirks such as duplicate "Name" columns,
+underscore-delimited headers, and comma-separated numeric fields inside cells.
 """
 
 import os
@@ -7,7 +16,26 @@ import numpy as np
 
 
 def _find_header(lines, startswith_tuple, required_substring=None):
-    """Return header line and its index from file, matching start and optional substring."""
+    """Find and return the first header line that matches criteria.
+
+    This scans ``lines`` and returns the first line that begins with any of the
+    strings in ``startswith_tuple``. If ``required_substring`` is provided,
+    the line must also contain that substring.
+
+    Parameters
+    ----------
+    lines : list[str]
+        File content split into lines.
+    startswith_tuple : tuple[str]
+        Tuple of possible prefixes for the header line (e.g. ("Name",)).
+    required_substring : str | None
+        Optional substring that must be present in the header line.
+
+    Returns
+    -------
+    tuple[str | None, int | None]
+        (header_line, index) if found, otherwise (None, None).
+    """
     for i, line in enumerate(lines):
         if line.strip().startswith(startswith_tuple):
             if required_substring is None or required_substring in line:
@@ -16,7 +44,32 @@ def _find_header(lines, startswith_tuple, required_substring=None):
 
 
 def _parse_data_rows(lines, header_idx, columns, skip_empty=True, break_on_empty=False):
-    """Parse tab-separated data rows into dict of lists."""
+    """Parse tab-separated rows following a header into a dict of column lists.
+
+    Each value is converted to ``float`` when possible; non-convertible values
+    are left as strings. Lines that do not match the expected column count are
+    ignored.
+
+    Parameters
+    ----------
+    lines : list[str]
+        File content lines.
+    header_idx : int
+        Index of the header line in ``lines``.
+    columns : list[str]
+        Expected column names corresponding to a row's tab-separated fields.
+    skip_empty : bool
+        If True, skip empty lines between data rows; if False, include them
+        (they will be ignored if column lengths don't match).
+    break_on_empty : bool
+        If True, stop parsing when the first empty line after the header is
+        encountered.
+
+    Returns
+    -------
+    dict[str, list]
+        Mapping from column name to list of parsed values (floats or strings).
+    """
     data_dict = {col: [] for col in columns}
     for line in lines[header_idx + 1 :]:
         if not line.strip():
@@ -36,7 +89,22 @@ def _parse_data_rows(lines, header_idx, columns, skip_empty=True, break_on_empty
 
 
 def _convert_data_types(data_dict):
-    """Convert lists to numpy arrays with appropriate dtype."""
+    """Convert each list in ``data_dict`` to a NumPy array.
+
+    Attempts to create a float array for each column and falls back to an
+    object array when conversion fails. The input dict is mutated and
+    returned for convenience.
+
+    Parameters
+    ----------
+    data_dict : dict[str, list]
+        Mapping of column names to lists of values.
+
+    Returns
+    -------
+    dict[str, numpy.ndarray]
+        The same mapping where each value is a NumPy array.
+    """
     for col in data_dict:
         try:
             data_dict[col] = np.array(data_dict[col], dtype=float)
@@ -45,78 +113,186 @@ def _convert_data_types(data_dict):
     return data_dict
 
 
-def read_fit_report_file(file_path):
+def _clean_header(header_line):
+    """Normalize a header line into a cleaned ``header`` and the original ``raw_header``.
+
+    Common cleaning steps:
+    - split on tabs and strip whitespace,
+    - remove a duplicated ``Name`` column if present (many XPS exports repeat it).
+
+    Parameters
+    ----------
+    header_line : str
+        The raw header line from the file.
+
+    Returns
+    -------
+    tuple[list[str], list[str]]
+        (cleaned_header, raw_header)
     """
-    Reads the first table in an XPS report file and parses it into a dictionary of numpy arrays.
+    raw_header = [h.strip() for h in header_line.split("\t") if h.strip()]
+    header = []
+    name_seen = False
+    for h in raw_header:
+        if h == "Name":
+            if name_seen:
+                continue
+            name_seen = True
+        header.append(h)
+    return header, raw_header
 
-    The dictionary keys are the table headers, and the values are 2D numpy arrays, where each column
-    corresponds to a unique entry (e.g., a chemical species) and each row corresponds to a fit
-    parameter.
 
-    Parameters:
-        file_path (str): Path to the report file to read.
+def _group_rows_by_name(table_data, name_idx):
+    """Group table rows into sub-tables when a repeating name indicates a new group.
 
-    Returns:
-        dict: Dictionary with headers as keys and 2D numpy arrays as values.
+    Many XPS report tables list multiple fit parameters for a component and then
+    repeat the component label for the next component. This function splits
+    ``table_data`` into groups where each group belongs to a single logical
+    entry.
+
+    Parameters
+    ----------
+    table_data : list[list[str]]
+        Parsed table rows (each row is a list of string fields).
+    name_idx : int
+        Column index used to detect repeated names (e.g. index of "Comp Label").
+
+    Returns
+    -------
+    list[list[list[str]]]
+        A list of groups; each group is a list of rows (rows are lists of strings).
     """
-
-    def _clean_header(header_line):
-        """Remove duplicate 'Name' columns from header."""
-        raw_header = [h.strip() for h in header_line.split("\t") if h.strip()]
-        header = []
-        name_seen = False
-        for h in raw_header:
-            if h == "Name":
-                if name_seen:
-                    continue
-                name_seen = True
-            header.append(h)
-        return header, raw_header
-
-    def _group_rows_by_name(table_data, name_idx):
-        """Group rows by third dimension (when 'Comp Label' repeats)."""
-        groups = []
-        current_group = []
-        unique_names = set()
-        for row in table_data:
-            name = row[name_idx]
-            if name in unique_names:
-                groups.append(current_group)
-                current_group = []
-                unique_names = set()
-            current_group.append(row)
-            unique_names.add(name)
-        if current_group:
+    groups = []
+    current_group = []
+    unique_names = set()
+    for row in table_data:
+        name = row[name_idx]
+        if name in unique_names:
             groups.append(current_group)
-        return groups
+            current_group = []
+            unique_names = set()
+        current_group.append(row)
+        unique_names.add(name)
+    if current_group:
+        groups.append(current_group)
+    return groups
 
-    def _table_to_dict(groups, header):
-        """Convert grouped table rows to dictionary of numpy arrays."""
 
-        def parse_value(val):
-            # If value is of form 'x , y', convert to [x, y] as floats
-            if "," in val:
-                parts = [p.strip() for p in val.split(",")]
-                try:
-                    return [float(p) for p in parts]
-                except ValueError:
-                    return val
+def _table_to_dict(groups, header):
+    """Convert grouped table rows into a dict of 2D NumPy arrays.
+
+    Each header becomes a key mapped to a 2D object array where columns
+    represent distinct grouped entries (e.g. chemical components) and rows
+    correspond to fit parameters.
+
+    The parser handles numeric fields, comma-separated numeric lists ("x, y"),
+    and leaves non-numeric entries as strings.
+
+    Parameters
+    ----------
+    groups : list[list[list[str]]]
+        Output from ``_group_rows_by_name``; groups of raw string rows.
+    header : list[str]
+        Cleaned header column names.
+
+    Returns
+    -------
+    dict[str, numpy.ndarray]
+        Mapping of header -> 2D NumPy array (dtype object) with shape
+        (n_parameters, n_components).
+    """
+
+    def parse_value(val):
+        # If value is of form 'x , y', convert to [x, y] as floats
+        if "," in val:
+            parts = [p.strip() for p in val.split(",")]
             try:
-                return float(val)
+                return [float(p) for p in parts]
             except ValueError:
                 return val
+        try:
+            return float(val)
+        except ValueError:
+            return val
 
-        result = {h: [] for h in header}
-        for group in groups:
-            arr = np.array(group)
-            for idx, h in enumerate(header):
-                col = arr[:, idx]
-                col_converted = [parse_value(v) for v in col]
-                result[h].append(col_converted)
-        for h in result:
-            # Use dtype=object to allow arrays and floats
-            result[h] = np.transpose(np.array(result[h], dtype=object))
-        return result
+    result = {h: [] for h in header}
+    for group in groups:
+        arr = np.array(group)
+        for idx, h in enumerate(header):
+            col = arr[:, idx]
+            col_converted = [parse_value(v) for v in col]
+            result[h].append(col_converted)
+    for h in result:
+        # Use dtype=object to allow arrays and floats
+        result[h] = np.transpose(np.array(result[h], dtype=object))
+    return result
+
+
+def _parse_report_rows(lines, header_idx, header, raw_header):
+    """Parse the rows of a report table into a list of cleaned rows.
+
+    This helper reads lines following ``header_idx`` until the first empty
+    line. If the raw header contained a duplicated ``Name`` column, the
+    corresponding duplicate value is removed from parsed rows so the row length
+    matches the cleaned ``header``.
+
+    Parameters
+    ----------
+    lines : list[str]
+        File content lines.
+    header_idx : int
+        Index of the header line.
+    header : list[str]
+        Cleaned header produced by ``_clean_header``.
+    raw_header : list[str]
+        Original header tokens before cleaning.
+
+    Returns
+    -------
+    list[list[str]]
+        Parsed, cleaned rows (lists of field strings).
+    """
+    rows = []
+    name_indices = [i for i, h in enumerate(raw_header) if h == "Name"]
+    for line in lines[header_idx + 1 :]:
+        if not line.strip():
+            break
+        row = [v.strip() for v in line.split("\t") if v.strip()]
+        # If an extra 'Name' column exists in raw data, remove the duplicate entry
+        if (
+            len(name_indices) > 1
+            and len(row) > len(header)
+            and len(row) > name_indices[1]
+        ):
+            del row[name_indices[1]]
+        if row:
+            rows.append(row)
+    return rows
+
+
+def read_fit_report_file(file_path):
+    """Read the primary fit report table from an XPS report file.
+
+    The function locates the first table header containing "Comp Label" and
+    parses the subsequent rows into a dictionary of 2D NumPy arrays. Header
+    names are cleaned (for example, "Position" is converted to
+    "Binding Energy (eV)"). The returned dictionary will also include a
+    ``"File Name"`` key containing the input file's base name for downstream
+    use (e.g. when saving figures).
+
+    Parameters
+    ----------
+    file_path : str
+        Path to the report file to read.
+
+    Returns
+    -------
+    dict | None
+        Mapping from header names to 2D NumPy arrays, or ``None`` if the file
+        does not exist or no table header is found.
+    """
+
+    # use module-level helpers: _clean_header, _group_rows_by_name, _table_to_dict
 
     if not os.path.isfile(file_path):
         print(f"File not found: {file_path}")
@@ -136,39 +312,55 @@ def read_fit_report_file(file_path):
     header, raw_header = _clean_header(header_line)
     header = ["Binding Energy (eV)" if h == "Position" else h for h in header]
 
-    # Parse table rows (report-specific logic)
-    table_data = []
-    for line in lines[header_idx + 1 :]:
-        if not line.strip():
-            break
-        row_raw = [v.strip() for v in line.split("\t") if v.strip()]
-        if len(row_raw) > len(header):
-            raw_name_indices = [i for i, h in enumerate(raw_header) if h == "Name"]
-            if len(raw_name_indices) > 1 and len(row_raw) > raw_name_indices[1]:
-                del row_raw[raw_name_indices[1]]
-        if row_raw:
-            table_data.append(row_raw)
-
+    # Parse table rows and convert to structured dict
+    table_rows = _parse_report_rows(lines, header_idx, header, raw_header)
     name_idx = header.index("Comp Label")
-    groups = _group_rows_by_name(table_data, name_idx)
+    groups = _group_rows_by_name(table_rows, name_idx)
     result_dict = _table_to_dict(groups, header)
+
+    try:
+        file_base = os.path.splitext(os.path.basename(file_path))[0]
+        result_dict["File Name"] = file_base
+    except (OSError, ValueError):
+        result_dict["File Name"] = None
+
     return result_dict
 
 
 def read_fit_spectrum_file(file_path):
-    """
-    Reads an XPS spectrum file and returns a dictionary with processed column names as keys and
-    numpy arrays as values.
+    """Parse an XPS spectrum (data) file into a dictionary of NumPy arrays.
 
-    Parameters:
-        file_path (str): Path to the spectrum file.
+    The function locates a header line (starting with one of ``"KE_"``,
+    ``"BE_"``, or ``"CPS_"``), parses the tab-separated columns below it, and
+    converts values to numeric types where possible. Column names are
+    simplified and renamed for consistency: keys starting with
+    ``"Normalised_Residual"`` become ``"Normalised Residual"``, keys beginning
+    with ``"CPS"`` are renamed ``"Measured"``, and underscores are removed
+    from other keys where appropriate. A ``"File Name"`` entry with the
+    input file base name is also added to the returned dict.
 
-    Returns:
-        dict: Dictionary with processed column names as keys and numpy arrays of data as values.
+    Parameters
+    ----------
+    file_path : str
+        Path to the spectrum file.
+
+    Returns
+    -------
+    dict
+        Mapping of processed column names to 1D NumPy arrays.
+
+    Raises
+    ------
+    ValueError
+        If no suitable data header is found in the file.
     """
 
     def _rename_spectrum_keys(data_dict):
-        """Rename keys for consistency and clarity."""
+        """Internal helper: canonicalize spectrum column names.
+
+        It returns a new dict where certain prefixes are normalized and
+        underscores are stripped from common header names.
+        """
         renamed = {}
         for col, arr in data_dict.items():
             if col.startswith("Normalised_Residual"):
@@ -194,4 +386,11 @@ def read_fit_spectrum_file(file_path):
     )
     data_dict = _convert_data_types(data_dict)
     renamed_dict = _rename_spectrum_keys(data_dict)
+
+    try:
+        file_base = os.path.splitext(os.path.basename(file_path))[0]
+        renamed_dict["File Name"] = file_base
+    except (OSError, ValueError):
+        renamed_dict["File Name"] = None
+
     return renamed_dict
