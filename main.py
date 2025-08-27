@@ -60,9 +60,9 @@ def main():
     """
     project_folder = (
         r"c:/Users/audun/OneDrive - Chalmers/Documents/Research/"
-        r"1_Improving_XPS_Analysis_Methods/"
+        r"1_Improving_XPS_Analysis_Methods/1_data/"
     )
-    experiment_folder = r"1_data/250619_Gr_XPS_delithiated_and_lithiated/3_output/"
+    experiment_folder = r"250619_Gr_XPS_delithiated_and_lithiated/3_output/"
     save_folder = project_folder + experiment_folder
     fit_report_file = save_folder + r"line_scan_delithiated_fit_report.txt"
     fit_spectrum_file = save_folder + r"line_scan_delithiated_spectrum_fit_0.txt"
