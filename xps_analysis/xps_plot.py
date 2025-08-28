@@ -1,10 +1,13 @@
 """xps_plot
 -----------
 
-Helpers and plotting routines for visualising XPS fit reports and
-spectra. Functions accept dictionaries produced by the parsing utilities in
-``xps_processing`` and produce Matplotlib figures/axes. This module also
-provides small helpers for saving figures with consistent filenames.
+Utilities for plotting XPS spectra and fit reports.
+
+This module provides functions and a small plotting helper class that
+accept dictionaries produced by the parsing utilities in
+``xps_processing`` and produce Matplotlib figures/axes. It also contains
+helpers for constructing safe filenames and saving figures with consistent
+options.
 """
 
 import os
@@ -15,19 +18,19 @@ import numpy as np
 
 # === Module-level helper functions ===
 def _update_plot_params(defaults, user_kwargs):
-    """Merge default plot parameters with user-supplied overrides.
+    """Merge default plotting parameters with user-supplied overrides.
 
     Parameters
     ----------
     defaults : dict
-        Default plotting parameters (e.g. linestyle, linewidth).
-    user_kwargs : dict | None
-        User-supplied overrides; values here overwrite ``defaults``.
+        Default plotting parameters (e.g. ``linestyle``, ``linewidth``).
+    user_kwargs : dict or None
+        Optional user-supplied overrides; keys here overwrite ``defaults``.
 
     Returns
     -------
     dict
-        Merged plotting parameters.
+        A new dictionary containing the merged plotting parameters.
     """
     params = defaults.copy()
     if user_kwargs:
@@ -36,26 +39,29 @@ def _update_plot_params(defaults, user_kwargs):
 
 
 def _build_save_info(save_folder, name_list, save_args=None, prefix="figure"):
-    """Build a filesystem-safe filename and matplotlib save kwargs.
+    """Build a filesystem-safe filename and default save kwargs for figures.
 
     Parameters
     ----------
     save_folder : str
-        Target folder for saving; created if it does not exist.
-    name_list : list[str]
-        Parts to include in the filename (joined with underscores). Empty
-        entries are ignored.
-    save_args : dict | None
-        Optional overrides forwarded to ``savefig`` (keys like ``format``,
-        ``dpi``, ``bbox_inches``). The special key ``save_folder`` is ignored
-        here and handled by the caller.
+        Destination folder for the saved figure. The folder is created if it
+        does not exist.
+    name_list : list of str
+        Sequence of parts to include in the filename (joined with
+        underscores); empty or None entries are ignored.
+    save_args : dict or None
+        Optional overrides forwarded to :meth:`matplotlib.figure.Figure.savefig`.
+        The special key ``save_folder`` is ignored here (it is handled by
+        the caller).
     prefix : str
-        Optional filename prefix. If empty, no prefix and underscore are used.
+        Optional filename prefix. If empty, no prefix is used.
 
     Returns
     -------
-    tuple[str, dict]
-        (absolute save path, keyword args for ``matplotlib.figure.Figure.savefig``)
+    tuple
+        ``(save_file, save_kwargs)`` where ``save_file`` is the absolute path
+        to the file and ``save_kwargs`` is a dict of keyword arguments
+        suitable for passing to ``Figure.savefig``.
     """
     os.makedirs(save_folder, exist_ok=True)
     save_kwargs = {"dpi": 300, "format": "png", "bbox_inches": "tight"}
@@ -78,21 +84,24 @@ def _build_save_info(save_folder, name_list, save_args=None, prefix="figure"):
 
 
 def _save_figure(fig, name_list=None, save_args=None, prefix="figure"):
-    """Save a Matplotlib figure using a generated, safe filename.
+    """Save a Matplotlib figure using a generated safe filename.
+
+    This helper constructs a safe filename from ``name_list`` and calls
+    :meth:`matplotlib.figure.Figure.savefig` with the computed keyword
+    arguments.
 
     Parameters
     ----------
     fig : matplotlib.figure.Figure
-        Figure to save.
-    name_list : list[str] | None
-        Name parts used to construct the filename. If ``None``, defaults to
-        an empty list and the filename will be ``all.<format>`` or similar.
-    save_args : dict | None
-        Save options. Recognized keys forwarded to ``savefig``; the special
-        ``save_folder`` key selects the destination folder.
+        Figure instance to save.
+    name_list : list of str or None
+        Parts used to build the filename. If ``None`` or empty, a generic
+        basename is used.
+    save_args : dict or None
+        Options forwarded to ``Figure.savefig``. The special key
+        ``save_folder`` (if present) selects the target folder.
     prefix : str
-        Optional prefix for the filename. When empty, the prefix is omitted so
-        a bare basename can be used.
+        Optional filename prefix; if empty the prefix is omitted.
 
     Returns
     -------
@@ -114,14 +123,44 @@ def _save_figure(fig, name_list=None, save_args=None, prefix="figure"):
 
 # New module-level helpers extracted from plot_fit_spectrum to reduce complexity
 def _get_x_axis_from_dict(spectrum_dict, x_axis):
-    """Return x data, x-axis label and whether to invert the axis."""
+    """Get x-axis data and display metadata from a spectrum mapping.
+
+    Parameters
+    ----------
+    spectrum_dict : dict
+        Mapping that may contain ``'BE'`` and/or ``'KE'`` arrays.
+    x_axis : str
+        Requested axis: ``'BE'`` (binding energy) or ``'KE'`` (kinetic energy).
+
+    Returns
+    -------
+    tuple
+        ``(x_values, x_label, invert)`` where ``x_values`` is the array to
+        plot on x, ``x_label`` is a human-readable axis label, and ``invert``
+        is a boolean indicating whether the x-axis should be inverted.
+    """
     if x_axis == "KE":
         return spectrum_dict.get("KE"), "Kinetic Energy (eV)", False
     return spectrum_dict.get("BE"), "Binding Energy (eV)", True
 
 
 def _should_plot_key(key, x_axis, normalised_residual):
-    """Decide whether a dictionary key should be plotted."""
+    """Decide whether a key from a spectrum mapping should be plotted.
+
+    Parameters
+    ----------
+    key : str
+        Candidate key from the spectrum dictionary.
+    x_axis : str
+        The axis currently used for x data (``'BE'`` or ``'KE'``).
+    normalised_residual : bool
+        Whether normalised residuals are being plotted; affects.
+
+    Returns
+    -------
+    bool
+        True if the key should be plotted as a data series, False otherwise.
+    """
     if key in (x_axis, "KE", "BE"):
         return False
     if key in ("File Name", "Sample"):
@@ -134,7 +173,20 @@ def _should_plot_key(key, x_axis, normalised_residual):
 
 
 def _figure_from_axes(ax_in):
-    """Return a Matplotlib Figure for a provided axis-like input."""
+    """Return the :class:`matplotlib.figure.Figure` for an axes-like input.
+
+    Parameters
+    ----------
+    ax_in : Axes or sequence of Axes
+        Axis-like object (single Axes or sequence) from which to obtain the
+        parent figure.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The figure instance associated with the provided axes, or the
+        current figure if none can be determined.
+    """
     try:
         return ax_in[0].get_figure()
     except (TypeError, IndexError, AttributeError):
@@ -145,7 +197,25 @@ def _figure_from_axes(ax_in):
 
 
 def _select_target_axis(ax, key):
-    """Select appropriate axis for a given key (residuals on ax[0], else main)."""
+    """Select the axis to plot a given series on.
+
+    Residual series (``'Residual'`` or ``'Normalised Residual'``) are
+    plotted on the top/residual axis when a two-axis layout is used
+    (``ax[0]``); other series use the main plotting axis (``ax[1]`` or
+    ``ax``).
+
+    Parameters
+    ----------
+    ax : Axes or sequence of Axes
+        Axis or axes container used for plotting.
+    key : str
+        Name of the series being plotted.
+
+    Returns
+    -------
+    Axes
+        The target axes for the given key.
+    """
     try:
         if key in ("Normalised Residual", "Residual"):
             return ax[0]
@@ -155,7 +225,22 @@ def _select_target_axis(ax, key):
 
 
 def _derive_file_name(mapping):
-    """Try to derive a sensible name from mapping (File Name / Sample / Name)."""
+    """Derive a sensible filename base from a mapping.
+
+    The function looks for keys in the order ``'File Name'``, ``'Sample'``,
+    ``'Name'`` and falls back to ``'spectrum'``. If the value is a sequence,
+    the first element is used.
+
+    Parameters
+    ----------
+    mapping : dict
+        Mapping that may contain identifying metadata for the spectrum.
+
+    Returns
+    -------
+    str
+        A short, filesystem-friendly name suitable for use in filenames.
+    """
     file_name = (
         mapping.get("File Name")
         or mapping.get("Sample")
@@ -168,10 +253,24 @@ def _derive_file_name(mapping):
 
 
 def _ensure_axes_and_main(ax_in):
-    """Return (fig, ax, main_ax, plot_here) for a given ax-like input.
+    """Prepare and return a figure/axes tuple for plotting.
 
-    This consolidates the common pattern of creating a new figure when
-    ``ax`` is None and selecting the main axis (ax[1] when available).
+    If ``ax_in`` is ``None`` a new :class:`matplotlib.figure.Figure` and
+    Axes are created. When ``ax_in`` is a sequence (e.g. ``(residual_ax,
+    main_ax)``), the second element is treated as the main plotting axis.
+
+    Parameters
+    ----------
+    ax_in : Axes or sequence of Axes or None
+        Optional target axes provided by the caller.
+
+    Returns
+    -------
+    tuple
+        ``(fig, ax, main_ax, plot_here)`` where ``fig`` is the Figure,
+        ``ax`` is the original axis object passed or created, ``main_ax`` is
+        the primary plotting axis and ``plot_here`` is True when a new
+        figure was created.
     """
     plot_here = False
     if ax_in is None:
@@ -200,35 +299,47 @@ def _ensure_axes_and_main(ax_in):
 
 
 def _maybe_invert_axes(ax, main_ax, invert):
-    """(Deprecated) kept for compatibility; see _configure_axes.
+    """Backward-compatible wrapper for axis inversion (deprecated).
 
-    This function is superseded by ``_configure_axes`` which performs both
-    inversion and residual-axis formatting. New code should use
-    ``_configure_axes(ax, main_ax, invert)``.
+    Notes
+    -----
+    This helper delegates to :func:`_configure_axes` and is kept for
+    backward compatibility; new code should call :func:`_configure_axes`
+    directly.
     """
     return _configure_axes(ax, main_ax, invert)
 
 
 def _format_residual_axis(ax, main_ax):
-    """Apply residual-axis specific formatting when present.
+    """Format a residual axis and invert x if requested (deprecated wrapper).
 
-    This hides ticks/spines on the residual axis and positions the bottom
-    spine at y=0 so the residual baseline is visible.
+    Notes
+    -----
+    This function forwards to :func:`_configure_axes` and exists for
+    compatibility with older code paths.
     """
     # Deprecated; functionality moved to _configure_axes
     return _configure_axes(ax, main_ax, invert=True)
 
 
 def _configure_axes(ax, main_ax, invert=False):
-    """Configure axes: optionally invert x-axes and apply residual formatting.
+    """Configure axes: invert x-axis and apply residual-axis formatting.
 
-    - If ``invert`` is True, attempt to invert the main x-axis and the
-      residual axis (ax[0]) when present.
-    - Apply residual-axis formatting (ylabel, bottom spine at y=0, hide
-      ticks/spines) when ax[0] exists.
+    Parameters
+    ----------
+    ax : Axes or sequence of Axes
+        Axis or axes container used for plotting. When a sequence is used the
+        residual axis is expected at index 0.
+    main_ax : Axes
+        Primary plotting axis.
+    invert : bool, optional
+        If True attempt to invert the x-axes (useful for binding energy
+        plots where decreasing energy is conventional).
 
-    The helper swallows AttributeError/IndexError/TypeError to remain robust
-    against single-Axes inputs.
+    Notes
+    -----
+    The helper swallows attribute/index errors to remain robust when a
+    single-Axes object is supplied.
     """
     # invert axes if requested
     if invert:
@@ -255,10 +366,23 @@ def _configure_axes(ax, main_ax, invert=False):
 
 
 def _plot_report_series(report_dict, ax, col_full, params):
-    """Plot rows from a fit report dict on a provided axis.
+    """Plot rows from a fit report mapping onto an axis.
 
-    Keeps the row/average plotting logic out of plot_fit_report to reduce
-    local variable pressure in the main function.
+    Each row in the report is plotted as a separate series and a horizontal
+    dashed line showing the row average is added (and included in the
+    legend).
+
+    Parameters
+    ----------
+    report_dict : dict
+        Mapping produced by the fit-report parser; expected to include a
+        ``'Name'`` entry and a column with header ``col_full``.
+    ax : Axes
+        Target axis for plotting.
+    col_full : str
+        Full column name to extract from the report dictionary.
+    params : dict
+        Keyword arguments forwarded to ``Axes.plot``.
     """
     names = np.array(report_dict.get("Name"), dtype=object)
     y_data = np.array(report_dict.get(col_full), dtype=object)
@@ -273,21 +397,30 @@ def _plot_report_series(report_dict, ax, col_full, params):
 
 
 def _plot_spectrum_series(spectrum_dict, ax, x, opts):
-    """Plot all series from ``spectrum_dict`` to appropriate axes and return handles/labels.
+    """Plot all series contained in a spectrum mapping and return legend info.
 
     Parameters
     ----------
     spectrum_dict : dict
-        Mapping containing series to plot.
-    ax : matplotlib.axes.Axes | sequence
-        Axis or axes used for plotting.
-    x : array-like | None
-        X values to use for series that match length.
+        Mapping where keys are series names and values are numeric sequences
+        or arrays.
+    ax : Axes or sequence of Axes
+        Axis or axes used for plotting. When a sequence is supplied residual
+        series are plotted on the residual axis (index 0).
+    x : array-like or None
+        Optional x-values to use for series that have matching length.
     opts : dict
-        Options bag with keys:
-          - "x_axis" : str
-          - "params" : dict (plot kwargs)
-          - "normalised_residual" : bool
+        Options dictionary containing:
+        - ``x_axis`` (str): selected axis name (``'BE'`` or ``'KE'``)
+        - ``params`` (dict): plotting kwargs forwarded to ``Axes.plot``
+        - ``normalised_residual`` (bool): whether to plot normalised
+          residuals instead of raw residuals.
+
+    Returns
+    -------
+    tuple
+        ``(handles, labels)`` where ``handles`` is a list of Line2D objects
+        and ``labels`` is a list of corresponding legend labels.
     """
     x_axis = opts.get("x_axis")
     params = opts.get("params") or {}
@@ -315,10 +448,11 @@ def _plot_spectrum_series(spectrum_dict, ax, x, opts):
 
 
 class SpectrumPlotter:
-    """Helper class that groups plotting helpers and state for spectra/report plotting.
+    """Helper for plotting spectra and fit-report series.
 
-    This class centralises plotting logic so instance methods can share state
-    and reduce the number of parameters passed between helpers.
+    The class stores short-lived plotting state (figure and axes) so the
+    instance methods can coordinate plotting and saving without threading
+    many arguments through helper calls.
     """
 
     def __init__(self):
@@ -330,7 +464,14 @@ class SpectrumPlotter:
 
     # --- instance helpers to reduce parameter passing ---
     def _ensure_axes(self, ax_in):
-        """Ensure self.fig, self.ax, self.main_ax, self.plot_here are set."""
+        """Initialise or derive figure/axes state for subsequent plotting.
+
+        Parameters
+        ----------
+        ax_in : Axes or sequence of Axes or None
+            Optional axes provided by the caller. When ``None`` a new figure
+            and axes are created.
+        """
         self.fig, self.ax, self.main_ax, self.plot_here = _ensure_axes_and_main(ax_in)
 
     def _derive_col_full(self, fit_param):
@@ -341,20 +482,8 @@ class SpectrumPlotter:
             "Goodness": "Goodness of Fit",
         }.get(fit_param, fit_param)
 
-    def _plot_report_series_internal(self, report_dict, col_full, params):
-        """Delegate to module helper using instance axes."""
-        _plot_report_series(report_dict, self.main_ax, col_full, params)
-
-    def _derive_xinfo(self, spectrum_dict, x_axis):
-        """Return xinfo and store nothing; thin wrapper for module helper."""
-        return _get_x_axis_from_dict(spectrum_dict, x_axis)
-
-    def _plot_spectrum_series_internal(self, spectrum_dict, x, opts):
-        """Delegate to module helper using instance axes."""
-        return _plot_spectrum_series(spectrum_dict, self.ax, x, opts)
-
-    def _configure_axes_instance(self, invert=False):
-        _configure_axes(self.ax, self.main_ax, invert=invert)
+    # Removed trivial wrapper methods to reduce indirection. Calls to
+    # the corresponding module-level helpers are inlined below.
 
     def _save_if_requested(self, save_fig, save_args, mapping):
         if save_fig:
@@ -384,7 +513,8 @@ class SpectrumPlotter:
         self._ensure_axes(ax)
 
         col_full = self._derive_col_full(fit_param)
-        self._plot_report_series_internal(report_dict, col_full, params)
+        # inline the former wrapper: plot directly using module helper
+        _plot_report_series(report_dict, self.main_ax, col_full, params)
 
         self.main_ax.set_xlabel("Experimental Variable")
         self.main_ax.set_ylabel(col_full)
@@ -412,9 +542,11 @@ class SpectrumPlotter:
         # prepare axes/state
         self._ensure_axes(ax)
 
-        xinfo = self._derive_xinfo(spectrum_dict, x_axis)
-        handles, labels = self._plot_spectrum_series_internal(
+        # get x-axis info directly from module helper
+        xinfo = _get_x_axis_from_dict(spectrum_dict, x_axis)
+        handles, labels = _plot_spectrum_series(
             spectrum_dict,
+            self.ax,
             xinfo[0],
             {
                 "x_axis": x_axis,
@@ -429,7 +561,8 @@ class SpectrumPlotter:
         if handles:
             self.main_ax.legend(handles, labels)
 
-        self._configure_axes_instance(invert=xinfo[2])
+        # inline axis configuration
+        _configure_axes(self.ax, self.main_ax, invert=xinfo[2])
 
         self._save_if_requested(save_fig, save_args, spectrum_dict)
 
@@ -438,35 +571,41 @@ class SpectrumPlotter:
 
 
 def plot_fit_report(report_dict, ax=None, save_fig=False, save_args=None, **kwargs):
-    """Plot a single fit parameter for all components from a report dictionary.
+    """Plot a fit-report parameter across all components.
 
-    The function expects ``report_dict`` to contain the cleaned table produced
-    by ``read_fit_report_file``. Each component becomes a separate series; a
-    horizontal line showing the component average is also drawn and included in
-    the legend.
+    The function plots one fitted parameter (for example binding energy or
+    area) for each component present in ``report_dict``. A horizontal dashed
+    line showing the component average is added for each series and included
+    in the legend.
 
     Parameters
     ----------
     report_dict : dict
-        Dictionary returned from ``read_fit_report_file`` (header -> 2D arrays).
-    ax : matplotlib.axes.Axes | None
-        Target axis to draw on. If ``None``, a new figure and axis are created.
-    fit_param : str
-        Short form or full column name of the parameter to plot (e.g. "BE",
-        "Area", "At Conc"). Some shorthand values are mapped internally.
-    kwargs : dict | None
-        Plot styling kwargs forwarded to ``Axes.plot`` (overrides module
-        defaults).
-    save_fig : bool
-        If True, the generated figure is saved using ``_save_figure`` and
-        ``save_args``.
-    save_args : dict | None
-        Save options; may include ``save_folder`` and parameters for
-        ``Figure.savefig`` (``format``, ``dpi``, etc.).
+        Mapping produced by the fit-report parser (header -> arrays). Expected
+        to contain a ``'Name'`` entry and the column named by ``fit_param``.
+    ax : matplotlib.axes.Axes or None, optional
+        Target axis to draw on. If ``None`` a new figure and axis are created.
+    save_fig : bool, default False
+        If True the generated figure will be saved using ``save_args``.
+    save_args : dict or None, optional
+        Options forwarded to the saving helper (may include ``save_folder``,
+        ``format``, ``dpi``).
+    fit_param : str, optional
+        Short or full column name of the parameter to plot (default ``'BE'``).
+        Common short forms ("BE", "Area", "At Conc", "Goodness") are
+        mapped to full column headers internally.
+    plot_kwargs : dict, optional
+        Keyword arguments forwarded to :meth:`matplotlib.axes.Axes.plot` for
+        the component series (overrides module defaults).
 
     Returns
     -------
     None
+
+    Notes
+    -----
+    This function is a thin wrapper around :class:`SpectrumPlotter.plot_report`
+    and exists for convenience when plotting a single report mapping.
     """
     # delegate to SpectrumPlotter to keep a compact module-level function
     sp = SpectrumPlotter()
@@ -476,12 +615,38 @@ def plot_fit_report(report_dict, ax=None, save_fig=False, save_args=None, **kwar
 
 
 def plot_fit_spectrum(spectrum_dict, ax=None, save_fig=False, save_args=None, **kwargs):
-    """Plot spectrum data and optional residuals from a spectrum dictionary.
+    """Plot a spectrum and optional residuals from a spectrum dictionary.
 
-    Supported kwargs:
-      - x_axis: "BE" (default) or "KE"
-      - normalised_residual: bool
-      - plot_kwargs: dict forwarded to Axes.plot
+    Convenience wrapper that constructs a :class:`SpectrumPlotter` and calls
+    its :meth:`SpectrumPlotter.plot_spectrum` method.
+
+    Parameters
+    ----------
+    spectrum_dict : dict
+        Mapping with series to plot. Expected keys include ``'BE'`` and/or
+        ``'KE'`` for x-values and other keys for data (components, residuals).
+    ax : matplotlib.axes.Axes or sequence of Axes, optional
+        Target axis or axes. If ``None``, a new figure/axes pair is created.
+    save_fig : bool, default False
+        If True the generated figure will be saved using ``save_args``.
+    save_args : dict, optional
+        Save options passed to :func:`_save_figure` (e.g. ``save_folder``,
+        ``format``, ``dpi``).
+    x_axis : {'BE', 'KE'}, default 'BE'
+        Which x-axis data to use when plotting.
+    normalised_residual : bool, default False
+        Whether to plot the normalised residual series instead of raw residual.
+    plot_kwargs : dict, optional
+        Keyword arguments forwarded to ``Axes.plot`` for data series.
+
+    Returns
+    -------
+    None
+
+    Notes
+    -----
+    This function is a thin wrapper — most logic lives in
+    :class:`SpectrumPlotter` and module-level helper functions.
     """
     sp = SpectrumPlotter()
     return sp.plot_spectrum(
