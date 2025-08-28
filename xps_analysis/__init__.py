@@ -4,5 +4,5 @@ from . import xps_processing
 from . import xps_utilities
 from . import xps_plot
 
-VERSION = "1.1.3"
+VERSION = "1.1.4"
 print(f"Welcome to version {VERSION} of the xps_analysis package!")
