@@ -238,10 +238,8 @@ def _configure_axes(ax, main_ax, invert=False):
         ax[0].set_xticks([])
         ax[0].set_xticklabels([])
         main_ax.xaxis.set_tick_params(labelbottom=True, bottom=True)
-        main_ax.spines["top"].set_visible(False)
-        for sp in ("top", "right", "left"):
-            ax[0].spines[sp].set_visible(False)
-            main_ax.spines[sp].set_visible(False)
+        ax[0].spines["bottom"].set_visible(False)
+        ax[0].spines["top"].set_visible(False)
     except (AttributeError, IndexError, TypeError):
         pass
 
@@ -306,6 +304,129 @@ def _plot_spectrum_series(spectrum_dict, ax, x, opts):
     return handles, labels
 
 
+class SpectrumPlotter:
+    """Helper class that groups plotting helpers and state for spectra/report plotting.
+
+    This class centralises plotting logic so instance methods can share state
+    and reduce the number of parameters passed between helpers.
+    """
+
+    def __init__(self):
+        # placeholder for future shared state
+        self.fig = None
+        self.ax = None
+        self.main_ax = None
+        self.plot_here = False
+
+    # --- instance helpers to reduce parameter passing ---
+    def _ensure_axes(self, ax_in):
+        """Ensure self.fig, self.ax, self.main_ax, self.plot_here are set."""
+        self.fig, self.ax, self.main_ax, self.plot_here = _ensure_axes_and_main(ax_in)
+
+    def _derive_col_full(self, fit_param):
+        return {
+            "BE": "Binding Energy (eV)",
+            "Area": "Raw Area",
+            "At Conc": "%At Conc",
+            "Goodness": "Goodness of Fit",
+        }.get(fit_param, fit_param)
+
+    def _plot_report_series_internal(self, report_dict, col_full, params):
+        """Delegate to module helper using instance axes."""
+        _plot_report_series(report_dict, self.main_ax, col_full, params)
+
+    def _derive_xinfo(self, spectrum_dict, x_axis):
+        """Return xinfo and store nothing; thin wrapper for module helper."""
+        return _get_x_axis_from_dict(spectrum_dict, x_axis)
+
+    def _plot_spectrum_series_internal(self, spectrum_dict, x, opts):
+        """Delegate to module helper using instance axes."""
+        return _plot_spectrum_series(spectrum_dict, self.ax, x, opts)
+
+    def _configure_axes_instance(self, invert=False):
+        _configure_axes(self.ax, self.main_ax, invert=invert)
+
+    def _save_if_requested(self, save_fig, save_args, mapping):
+        if save_fig:
+            _save_figure(
+                self.fig,
+                name_list=[_derive_file_name(mapping)],
+                save_args=save_args,
+                prefix="",
+            )
+
+    def plot_report(
+        self, report_dict, ax=None, save_fig=False, save_args=None, **kwargs
+    ):
+        """Instance version of plot_fit_report."""
+        fit_param = kwargs.pop("fit_param", "BE")
+        plot_kwargs = kwargs.pop("plot_kwargs", None)
+
+        params = _update_plot_params(
+            {"linestyle": "--", "linewidth": 1.5, "marker": "o"}, plot_kwargs
+        )
+
+        if report_dict is None:
+            print("No data to plot.")
+            return
+
+        # prepare axes and state on the instance
+        self._ensure_axes(ax)
+
+        col_full = self._derive_col_full(fit_param)
+        self._plot_report_series_internal(report_dict, col_full, params)
+
+        self.main_ax.set_xlabel("Experimental Variable")
+        self.main_ax.set_ylabel(col_full)
+        self.main_ax.legend()
+
+        self._save_if_requested(save_fig, save_args, report_dict)
+
+        if self.plot_here:
+            plt.show()
+
+    def plot_spectrum(
+        self, spectrum_dict, ax=None, save_fig=False, save_args=None, **kwargs
+    ):
+        """Instance version of plot_fit_spectrum."""
+        x_axis = kwargs.pop("x_axis", "BE")
+        normalised_residual = kwargs.pop("normalised_residual", False)
+        plot_kwargs = kwargs.pop("plot_kwargs", None)
+
+        params = _update_plot_params({"linestyle": "-", "linewidth": 1.5}, plot_kwargs)
+
+        if spectrum_dict is None:
+            print("No data to plot.")
+            return
+
+        # prepare axes/state
+        self._ensure_axes(ax)
+
+        xinfo = self._derive_xinfo(spectrum_dict, x_axis)
+        handles, labels = self._plot_spectrum_series_internal(
+            spectrum_dict,
+            xinfo[0],
+            {
+                "x_axis": x_axis,
+                "params": params,
+                "normalised_residual": normalised_residual,
+            },
+        )
+
+        self.main_ax.set_xlabel(xinfo[1])
+        self.main_ax.set_ylabel("Intensity (a.u.)")
+
+        if handles:
+            self.main_ax.legend(handles, labels)
+
+        self._configure_axes_instance(invert=xinfo[2])
+
+        self._save_if_requested(save_fig, save_args, spectrum_dict)
+
+        if self.plot_here:
+            plt.show()
+
+
 def plot_fit_report(report_dict, ax=None, save_fig=False, save_args=None, **kwargs):
     """Plot a single fit parameter for all components from a report dictionary.
 
@@ -337,40 +458,11 @@ def plot_fit_report(report_dict, ax=None, save_fig=False, save_args=None, **kwar
     -------
     None
     """
-    fit_param = kwargs.pop("fit_param", "BE")
-    plot_kwargs = kwargs.pop("plot_kwargs", None)
-
-    params = _update_plot_params(
-        {"linestyle": "--", "linewidth": 1.5, "marker": "o"}, plot_kwargs
+    # delegate to SpectrumPlotter to keep a compact module-level function
+    sp = SpectrumPlotter()
+    return sp.plot_report(
+        report_dict, ax=ax, save_fig=save_fig, save_args=save_args, **kwargs
     )
-
-    if report_dict is None:
-        print("No data to plot.")
-        return
-
-    # create or normalise axes/figure
-    fig, ax, main_ax, plot_here = _ensure_axes_and_main(ax)
-
-    # Map shorthand to full column name and delegate row plotting
-    col_full = {
-        "BE": "Binding Energy (eV)",
-        "Area": "Raw Area",
-        "At Conc": "%At Conc",
-        "Goodness": "Goodness of Fit",
-    }.get(fit_param, fit_param)
-
-    _plot_report_series(report_dict, main_ax, col_full, params)
-
-    main_ax.set_xlabel("Experimental Variable")
-    main_ax.set_ylabel(col_full)
-    main_ax.legend()
-
-    if save_fig:
-        file_name = _derive_file_name(report_dict)
-        _save_figure(fig, name_list=[file_name], save_args=save_args, prefix="")
-
-    if plot_here:
-        plt.show()
 
 
 def plot_fit_spectrum(spectrum_dict, ax=None, save_fig=False, save_args=None, **kwargs):
@@ -381,49 +473,7 @@ def plot_fit_spectrum(spectrum_dict, ax=None, save_fig=False, save_args=None, **
       - normalised_residual: bool
       - plot_kwargs: dict forwarded to Axes.plot
     """
-    x_axis = kwargs.pop("x_axis", "BE")
-    normalised_residual = kwargs.pop("normalised_residual", False)
-    plot_kwargs = kwargs.pop("plot_kwargs", None)
-
-    params = _update_plot_params({"linestyle": "-", "linewidth": 1.5}, plot_kwargs)
-
-    if spectrum_dict is None:
-        print("No data to plot.")
-        return
-
-    # Ensure axes/figure and decide which axis is the main plotting axis
-    fig, ax, main_ax, plot_here = _ensure_axes_and_main(ax)
-
-    xinfo = _get_x_axis_from_dict(spectrum_dict, x_axis)
-    handles, labels = _plot_spectrum_series(
-        spectrum_dict,
-        ax,
-        xinfo[0],
-        {
-            "x_axis": x_axis,
-            "params": params,
-            "normalised_residual": normalised_residual,
-        },
+    sp = SpectrumPlotter()
+    return sp.plot_spectrum(
+        spectrum_dict, ax=ax, save_fig=save_fig, save_args=save_args, **kwargs
     )
-
-    main_ax.set_xlabel(xinfo[1])
-    main_ax.set_ylabel("Intensity (a.u.)")
-
-    if handles:
-        main_ax.legend(handles, labels)
-
-    _maybe_invert_axes(ax, main_ax, xinfo[2])
-
-    # residual axis adjustments (if present)
-    _format_residual_axis(ax, main_ax)
-
-    if save_fig:
-        _save_figure(
-            fig,
-            name_list=[_derive_file_name(spectrum_dict)],
-            save_args=save_args,
-            prefix="",
-        )
-
-    if plot_here:
-        plt.show()
