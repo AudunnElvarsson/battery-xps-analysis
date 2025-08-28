@@ -177,7 +177,17 @@ def _ensure_axes_and_main(ax_in):
     if ax_in is None:
         plot_here = True
         fig, ax = plt.subplots(figsize=(8, 6))
-        fig.set_tight_layout(True)
+        # prefer the newer layout engine API when available; fall back to
+        # set_tight_layout for older matplotlib versions to avoid
+        # PendingDeprecationWarning
+        try:
+            fig.set_layout_engine("tight")
+        except AttributeError:
+            try:
+                fig.set_tight_layout(True)
+            except AttributeError:
+                # last-resort: ignore if neither method exists
+                pass
     else:
         fig = _figure_from_axes(ax_in)
         ax = ax_in
