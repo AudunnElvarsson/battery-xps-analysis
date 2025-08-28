@@ -1,26 +1,37 @@
-"""
-This module provides utilities for converting XPS data files,
-specifically for converting .vms files to .txt format.
+"""xps_utilities
+----------------
 
-Functions:
-    convert_vms_to_txt(input_path, output_path):
-        Converts a single .vms file to a .txt file.
-    convert_all_vms_in_project(project_folder):
-        Converts all .vms files in all measurement sessions in the data folder of a project.
+Small utilities for converting experiment-exported data files for XPS
+workflows. The current helpers focus on converting vendor-specific ``.vms``
+files into plain text ``.txt`` files and for batch-converting sessions in a
+project folder.
+
+The functions are intentionally lightweight and designed to be replaced or
+extended with project-specific conversion logic when needed.
 """
 
 import os
 
 
 def convert_vms_to_txt(input_path, output_path):
-    """
-    Convert a single .vms file to .txt format.
+    """Convert a single ``.vms`` file to plain-text ``.txt``.
 
-    Parameters:
-        input_path (str): Path to the input .vms file.
-        output_path (str): Path to the output .txt file.
+    This function currently performs a simple read/write copy. Replace the
+    body with vendor-specific parsing or sanity checks if a true conversion is
+    required.
+
+    Parameters
+    ----------
+    input_path : str
+        Path to the source ``.vms`` file.
+    output_path : str
+        Destination path for the produced ``.txt`` file.
+
+    Returns
+    -------
+    None
     """
-    # Example placeholder conversion logic
+    # Example placeholder conversion logic: copy file contents
     with (
         open(input_path, "r", encoding="utf-8") as infile,
         open(output_path, "w", encoding="utf-8") as outfile,
@@ -29,36 +40,23 @@ def convert_vms_to_txt(input_path, output_path):
         outfile.write(data)
 
 
-def convert_all_vms_in_project(project_folder):
+def convert_all_vms_in_project(data_folder):
+    """Recursively convert all ``.vms`` files in a project's sessions.
+
+    The function looks for the ``data_folder`` and iterates its subfolders (sessions). For each
+    session it expects a ``1_processed_data/vms_files`` directory containing ``.vms`` files. A new
+    sibling directory ``txt_files`` will be created and populated with the converted files.
+    If ``txt_files`` already exists the session is skipped to avoid accidental re-processing.
+
+    Parameters
+    ----------
+    data_folder : str
+        Path to the root of the data directory containing the sessions.
+
+    Returns
+    -------
+    None
     """
-    Convert all .vms files in all measurement sessions in the 1_data folder of a project.
-
-    For each session in the '1_data' subfolder of the project, this function looks for a folder
-    named '1_processed_data'. Inside '1_processed_data', it looks for a folder named 'vms_files'.
-    It converts all .vms files in that folder to .txt files, creates a new folder called 'txt_files'
-    in the same '1_processed_data' folder, and writes the converted .txt files there. If the
-    'txt_files' folder already exists, the function skips conversion for that session.
-
-    Parameters:
-        project_folder (str): Path to the root of the project folder.
-
-    Folder structure example:
-        project_folder/
-            1_data/
-                Session1/
-                    1_processed_data/
-                        vms_files/
-                            file1.vms
-                            file2.vms
-                        txt_files/
-                            file1.txt
-                            file2.txt
-                Session2/
-                    1_processed_data/
-                        vms_files/
-                        txt_files/
-    """
-    data_folder = os.path.join(project_folder, "1_data")
     if not os.path.isdir(data_folder):
         print(f"Data folder not found: {data_folder}")
         return
@@ -76,7 +74,9 @@ def convert_all_vms_in_project(project_folder):
             print(f"No 'vms_files' folder in session '{session}'")
             continue
         if os.path.exists(txt_folder):
-            print(f"Skipping conversion, txt folder already exists in session '{session}'")
+            print(
+                f"Skipping conversion, txt folder already exists in session '{session}'"
+            )
             continue
         os.makedirs(txt_folder, exist_ok=True)
         print(f"Converting vms files to txt files in session '{session}'")
