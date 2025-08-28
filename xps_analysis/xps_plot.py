@@ -360,7 +360,7 @@ def _configure_axes(ax, main_ax, invert=False):
         ax[0].set_xticklabels([])
         main_ax.xaxis.set_tick_params(labelbottom=True, bottom=True)
         ax[0].spines["bottom"].set_visible(False)
-        ax[0].spines["top"].set_visible(False)
+        main_ax.spines["top"].set_visible(False)
     except (AttributeError, IndexError, TypeError):
         pass
 
