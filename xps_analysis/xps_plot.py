@@ -112,10 +112,201 @@ def _save_figure(fig, name_list=None, save_args=None, prefix="figure"):
     return save_file
 
 
-# === Main plotting functions ===
-def plot_fit_report(
-    report_dict, ax=None, fit_param="BE", kwargs=None, save_fig=False, save_args=None
-):
+# New module-level helpers extracted from plot_fit_spectrum to reduce complexity
+def _get_x_axis_from_dict(spectrum_dict, x_axis):
+    """Return x data, x-axis label and whether to invert the axis."""
+    if x_axis == "KE":
+        return spectrum_dict.get("KE"), "Kinetic Energy (eV)", False
+    return spectrum_dict.get("BE"), "Binding Energy (eV)", True
+
+
+def _should_plot_key(key, x_axis, normalised_residual):
+    """Decide whether a dictionary key should be plotted."""
+    if key in (x_axis, "KE", "BE"):
+        return False
+    if key in ("File Name", "Sample"):
+        return False
+    if key == "Normalised Residual" and not normalised_residual:
+        return False
+    if key == "Residual" and normalised_residual:
+        return False
+    return True
+
+
+def _figure_from_axes(ax_in):
+    """Return a Matplotlib Figure for a provided axis-like input."""
+    try:
+        return ax_in[0].get_figure()
+    except (TypeError, IndexError, AttributeError):
+        try:
+            return ax_in.get_figure()
+        except (AttributeError, TypeError):
+            return plt.gcf()
+
+
+def _select_target_axis(ax, key):
+    """Select appropriate axis for a given key (residuals on ax[0], else main)."""
+    try:
+        if key in ("Normalised Residual", "Residual"):
+            return ax[0]
+        return ax[1]
+    except (TypeError, IndexError, AttributeError):
+        return ax
+
+
+def _derive_file_name(mapping):
+    """Try to derive a sensible name from mapping (File Name / Sample / Name)."""
+    file_name = (
+        mapping.get("File Name")
+        or mapping.get("Sample")
+        or mapping.get("Name")
+        or "spectrum"
+    )
+    if isinstance(file_name, (list, np.ndarray)):
+        file_name = file_name[0] if len(file_name) else "spectrum"
+    return file_name
+
+
+def _ensure_axes_and_main(ax_in):
+    """Return (fig, ax, main_ax, plot_here) for a given ax-like input.
+
+    This consolidates the common pattern of creating a new figure when
+    ``ax`` is None and selecting the main axis (ax[1] when available).
+    """
+    plot_here = False
+    if ax_in is None:
+        plot_here = True
+        fig, ax = plt.subplots(figsize=(8, 6))
+        fig.set_tight_layout(True)
+    else:
+        fig = _figure_from_axes(ax_in)
+        ax = ax_in
+
+    try:
+        main_ax = ax[1]
+    except (TypeError, IndexError, AttributeError):
+        main_ax = ax
+    return fig, ax, main_ax, plot_here
+
+
+def _maybe_invert_axes(ax, main_ax, invert):
+    """(Deprecated) kept for compatibility; see _configure_axes.
+
+    This function is superseded by ``_configure_axes`` which performs both
+    inversion and residual-axis formatting. New code should use
+    ``_configure_axes(ax, main_ax, invert)``.
+    """
+    return _configure_axes(ax, main_ax, invert)
+
+
+def _format_residual_axis(ax, main_ax):
+    """Apply residual-axis specific formatting when present.
+
+    This hides ticks/spines on the residual axis and positions the bottom
+    spine at y=0 so the residual baseline is visible.
+    """
+    # Deprecated; functionality moved to _configure_axes
+    return _configure_axes(ax, main_ax, invert=True)
+
+
+def _configure_axes(ax, main_ax, invert=False):
+    """Configure axes: optionally invert x-axes and apply residual formatting.
+
+    - If ``invert`` is True, attempt to invert the main x-axis and the
+      residual axis (ax[0]) when present.
+    - Apply residual-axis formatting (ylabel, bottom spine at y=0, hide
+      ticks/spines) when ax[0] exists.
+
+    The helper swallows AttributeError/IndexError/TypeError to remain robust
+    against single-Axes inputs.
+    """
+    # invert axes if requested
+    if invert:
+        try:
+            main_ax.invert_xaxis()
+        except (AttributeError, TypeError):
+            pass
+        try:
+            ax[0].invert_xaxis()
+        except (AttributeError, IndexError, TypeError):
+            pass
+
+    # residual axis formatting
+    try:
+        ax[0].set_ylabel("Residual")
+        ax[0].spines["bottom"].set_position(("data", 0))
+        ax[0].set_xticks([])
+        ax[0].set_xticklabels([])
+        main_ax.xaxis.set_tick_params(labelbottom=True, bottom=True)
+        main_ax.spines["top"].set_visible(False)
+        for sp in ("top", "right", "left"):
+            ax[0].spines[sp].set_visible(False)
+            main_ax.spines[sp].set_visible(False)
+    except (AttributeError, IndexError, TypeError):
+        pass
+
+
+def _plot_report_series(report_dict, ax, col_full, params):
+    """Plot rows from a fit report dict on a provided axis.
+
+    Keeps the row/average plotting logic out of plot_fit_report to reduce
+    local variable pressure in the main function.
+    """
+    names = np.array(report_dict.get("Name"), dtype=object)
+    y_data = np.array(report_dict.get(col_full), dtype=object)
+
+    for i in range(y_data.shape[0]):
+        y = y_data[i]
+        x = np.arange(y_data.shape[1]) if y_data.ndim > 1 else np.arange(1)
+        label = names[i][0] if isinstance(names[i], (list, np.ndarray)) else names[i]
+        avg = np.mean([v for v in y if isinstance(v, (int, float, np.floating))])
+        (line,) = ax.plot(x, y, label=f"{label} (avg={avg:.2f})", **params)
+        ax.plot(x, [avg] * len(x), color=line.get_color(), alpha=0.7, linestyle=":")
+
+
+def _plot_spectrum_series(spectrum_dict, ax, x, opts):
+    """Plot all series from ``spectrum_dict`` to appropriate axes and return handles/labels.
+
+    Parameters
+    ----------
+    spectrum_dict : dict
+        Mapping containing series to plot.
+    ax : matplotlib.axes.Axes | sequence
+        Axis or axes used for plotting.
+    x : array-like | None
+        X values to use for series that match length.
+    opts : dict
+        Options bag with keys:
+          - "x_axis" : str
+          - "params" : dict (plot kwargs)
+          - "normalised_residual" : bool
+    """
+    x_axis = opts.get("x_axis")
+    params = opts.get("params") or {}
+    normalised_residual = opts.get("normalised_residual", False)
+
+    handles = []
+    labels = []
+    for key, values in spectrum_dict.items():
+        if not _should_plot_key(key, x_axis, normalised_residual):
+            continue
+        target_ax = _select_target_axis(ax, key)
+        try:
+            cond = x is not None and len(x) == len(values)
+        except TypeError:
+            cond = False
+        xs = x if cond else np.arange(len(values))
+        try:
+            (line,) = target_ax.plot(xs, values, label=key, **params)
+        except (TypeError, ValueError):
+            # skip series that cannot be plotted
+            continue
+        handles.append(line)
+        labels.append(key)
+    return handles, labels
+
+
+def plot_fit_report(report_dict, ax=None, save_fig=False, save_args=None, **kwargs):
     """Plot a single fit parameter for all components from a report dictionary.
 
     The function expects ``report_dict`` to contain the cleaned table produced
@@ -146,250 +337,93 @@ def plot_fit_report(
     -------
     None
     """
-    defaults = {"linestyle": "--", "linewidth": 1.5, "marker": "o"}
-    params = _update_plot_params(defaults, kwargs)
+    fit_param = kwargs.pop("fit_param", "BE")
+    plot_kwargs = kwargs.pop("plot_kwargs", None)
+
+    params = _update_plot_params(
+        {"linestyle": "--", "linewidth": 1.5, "marker": "o"}, plot_kwargs
+    )
 
     if report_dict is None:
         print("No data to plot.")
         return
 
-    plot_here = False
-    if ax is None:
-        plot_here = True
-        fig, ax = plt.subplots(figsize=(8, 6))
-        fig.set_tight_layout(True)
-    else:
-        # ensure we have the Figure object for potential saving
-        try:
-            fig = ax.get_figure()
-        except (AttributeError, TypeError):
-            fig = plt.gcf()
+    # create or normalise axes/figure
+    fig, ax, main_ax, plot_here = _ensure_axes_and_main(ax)
 
-    # Map shorthand to full column names
-    col_map = {
+    # Map shorthand to full column name and delegate row plotting
+    col_full = {
         "BE": "Binding Energy (eV)",
         "Area": "Raw Area",
         "At Conc": "%At Conc",
         "Goodness": "Goodness of Fit",
-    }
-    col_full = col_map.get(fit_param, fit_param)
-    names = np.array(report_dict.get("Name"), dtype=object)
-    y_data = np.array(report_dict.get(col_full), dtype=object)
+    }.get(fit_param, fit_param)
 
-    for i in range(y_data.shape[0]):
-        y = y_data[i]
-        x = np.arange(y_data.shape[1]) if y_data.ndim > 1 else np.arange(1)
-        label = names[i][0] if isinstance(names[i], (list, np.ndarray)) else names[i]
-        avg = np.mean([v for v in y if isinstance(v, (int, float, np.floating))])
-        (line,) = ax.plot(x, y, label=f"{label} (avg={avg:.2f})", **params)
-        ax.plot(x, [avg] * len(x), color=line.get_color(), alpha=0.7, linestyle=":")
+    _plot_report_series(report_dict, main_ax, col_full, params)
 
-    ax.set_xlabel("Experimental Variable")
-    ax.set_ylabel(col_full)
-    ax.legend()
+    main_ax.set_xlabel("Experimental Variable")
+    main_ax.set_ylabel(col_full)
+    main_ax.legend()
 
     if save_fig:
-        # prefer 'File Name' if present, else fallback to Sample/Name
-        file_name = (
-            report_dict.get("File Name")
-            or report_dict.get("Sample")
-            or report_dict.get("Name")
-            or "report"
-        )
-        if isinstance(file_name, (list, np.ndarray)):
-            file_name = file_name[0] if len(file_name) else "report"
+        file_name = _derive_file_name(report_dict)
         _save_figure(fig, name_list=[file_name], save_args=save_args, prefix="")
 
     if plot_here:
         plt.show()
 
 
-def plot_fit_spectrum(
-    spectrum_dict,
-    ax=None,
-    x_axis="BE",
-    kwargs=None,
-    normalised_residual=False,
-    save_fig=False,
-    save_args=None,
-):
+def plot_fit_spectrum(spectrum_dict, ax=None, save_fig=False, save_args=None, **kwargs):
     """Plot spectrum data and optional residuals from a spectrum dictionary.
 
-    The function supports plotting binding-energy (BE) or kinetic-energy (KE)
-    on the x-axis. Residuals may be plotted on a separate axis when provided
-    in the dictionary. Non-numeric metadata keys (e.g. ``"File Name"``)
-    are ignored automatically.
-
-    Parameters
-    ----------
-    spectrum_dict : dict
-        Mapping produced by ``read_fit_spectrum_file``: column name -> 1D array.
-    ax : matplotlib.axes.Axes | Sequence[Axes] | None
-        Axis or sequence of axes to draw on. If ``None``, a new figure/axis is
-        created. If a sequence is passed, residuals will be plotted on
-        ``ax[0]`` and the main spectrum on ``ax[1]``.
-    x_axis : {'BE', 'KE'}
-        Which energy axis to use. ``'BE'`` (default) will be inverted to match
-        common XPS conventions.
-    kwargs : dict | None
-        Plot styling kwargs forwarded to plot calls.
-    normalised_residual : bool
-        When True, plot the key ``'Normalised Residual'`` instead of
-        ``'Residual'`` if available.
-    save_fig : bool
-        If True, save the figure via ``_save_figure``.
-    save_args : dict | None
-        Save options; may include ``save_folder`` and parameters forwarded to
-        ``Figure.savefig``.
-
-    Returns
-    -------
-    None
+    Supported kwargs:
+      - x_axis: "BE" (default) or "KE"
+      - normalised_residual: bool
+      - plot_kwargs: dict forwarded to Axes.plot
     """
+    x_axis = kwargs.pop("x_axis", "BE")
+    normalised_residual = kwargs.pop("normalised_residual", False)
+    plot_kwargs = kwargs.pop("plot_kwargs", None)
 
-    def _get_x_axis(spectrum_dict, x_axis):
-        """Return x data, x-axis label and whether to invert the axis.
-
-        Parameters
-        ----------
-        spectrum_dict : dict
-            Spectrum mapping with possible keys ``'BE'`` or ``'KE'``.
-        x_axis : str
-            Requested axis identifier (``'BE'`` or ``'KE'``).
-
-        Returns
-        -------
-        tuple[array | None, str, bool]
-            (x array or None, x-axis label, invert_flag)
-        """
-        if x_axis == "KE":
-            x = spectrum_dict.get("KE")
-            xlabel = "Kinetic Energy (eV)"
-            invert = False
-        else:
-            x = spectrum_dict.get("BE")
-            xlabel = "Binding Energy (eV)"
-            invert = True
-        return x, xlabel, invert
-
-    def _should_plot(key):
-        """Decide whether a dictionary key should be plotted.
-
-        Excludes the selected x-axis column and common metadata fields. Also
-        toggles between normalised and raw residual keys based on
-        ``normalised_residual``.
-        """
-        if key in (x_axis, "KE", "BE"):
-            return False
-        # skip metadata fields that are not numeric arrays
-        if key in ("File Name", "Sample"):
-            return False
-        if key == "Normalised Residual" and not normalised_residual:
-            return False
-        if key == "Residual" and normalised_residual:
-            return False
-        return True
-
-    def _figure_from_axes(ax_in):
-        """Return a Matplotlib Figure for a provided axis-like input.
-
-        This helper accepts a single ``Axes`` object or an array/sequence of
-        axes and returns the corresponding ``Figure`` instance. Falls back to
-        ``plt.gcf()`` when no figure can be resolved.
-        """
-        try:
-            # array-like of axes
-            return ax_in[0].get_figure()
-        except (TypeError, IndexError, AttributeError):
-            try:
-                return ax_in.get_figure()
-            except (AttributeError, TypeError):
-                return plt.gcf()
-
-    defaults = {"linestyle": "-", "linewidth": 1.5}
-    params = _update_plot_params(defaults, kwargs)
+    params = _update_plot_params({"linestyle": "-", "linewidth": 1.5}, plot_kwargs)
 
     if spectrum_dict is None:
         print("No data to plot.")
         return
 
-    plot_here = False
-    if ax is None:
-        plot_here = True
-        fig, ax = plt.subplots(figsize=(8, 6))
-        fig.set_tight_layout(True)
-    else:
-        fig = _figure_from_axes(ax)
+    # Ensure axes/figure and decide which axis is the main plotting axis
+    fig, ax, main_ax, plot_here = _ensure_axes_and_main(ax)
 
-    x, xlabel, invert = _get_x_axis(spectrum_dict, x_axis)
+    xinfo = _get_x_axis_from_dict(spectrum_dict, x_axis)
+    handles, labels = _plot_spectrum_series(
+        spectrum_dict,
+        ax,
+        xinfo[0],
+        {
+            "x_axis": x_axis,
+            "params": params,
+            "normalised_residual": normalised_residual,
+        },
+    )
 
-    # collect handles/labels for combined legend
-    handles = []
-    labels = []
-    for key, values in spectrum_dict.items():
-        if not _should_plot(key):
-            continue
-        # decide which axis to use (residual on ax[0], others on ax[1])
-        target_ax = (
-            ax[0]
-            if key in ("Normalised Residual", "Residual")
-            else (ax[1] if hasattr(ax, "__len__") else ax)
-        )
-        if x is not None and len(x) == len(values):
-            (line,) = target_ax.plot(x, values, label=key, **params)
-        else:
-            (line,) = target_ax.plot(
-                np.arange(len(values)), values, label=key, **params
-            )
-        handles.append(line)
-        labels.append(key)
-
-    # set labels and legend on main axis
-    main_ax = ax[1] if hasattr(ax, "__len__") else ax
-    main_ax.set_xlabel(xlabel)
+    main_ax.set_xlabel(xinfo[1])
     main_ax.set_ylabel("Intensity (a.u.)")
-    # Combine legends from both axes into one on main_ax
+
     if handles:
         main_ax.legend(handles, labels)
 
-        if invert:
-            # invert only the main axis and the residual axis if present
-            try:
-                main_ax.invert_xaxis()
-            except (AttributeError, TypeError):
-                pass
-            try:
-                ax[0].invert_xaxis()
-            except (AttributeError, IndexError, TypeError):
-                pass
+    _maybe_invert_axes(ax, main_ax, xinfo[2])
 
     # residual axis adjustments (if present)
-    try:
-        ax[0].set_ylabel("Residual")
-        ax[0].spines["bottom"].set_position(("data", 0))
-        ax[0].set_xticks([])
-        ax[0].set_xticklabels([])
-        main_ax.xaxis.set_tick_params(labelbottom=True, bottom=True)
-        main_ax.spines["top"].set_visible(False)
-        # remove boxes on individual axes: hide right/top/left spines
-        for sp in ("top", "right", "left"):
-            ax[0].spines[sp].set_visible(False)
-            main_ax.spines[sp].set_visible(False)
-    except (AttributeError, IndexError, TypeError):
-        # single-axis case or unexpected axes shape; ignore residual-specific formatting
-        pass
+    _format_residual_axis(ax, main_ax)
 
     if save_fig:
-        # try to derive a sensible name from spectrum_dict, fallback to "spectrum"
-        file_name = (
-            spectrum_dict.get("File Name")
-            or spectrum_dict.get("Sample")
-            or spectrum_dict.get("Name")
-            or "spectrum"
+        _save_figure(
+            fig,
+            name_list=[_derive_file_name(spectrum_dict)],
+            save_args=save_args,
+            prefix="",
         )
-        if isinstance(file_name, (list, np.ndarray)):
-            file_name = file_name[0] if len(file_name) else "spectrum"
-        _save_figure(fig, name_list=[file_name], save_args=save_args, prefix="")
 
     if plot_here:
         plt.show()

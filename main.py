@@ -26,7 +26,7 @@ def fit_report_parameters(report_dict, save_fig=False, save_args=None):
         report_dict,
         ax=axes,
         fit_param="BE",
-        kwargs=custom_kwargs,
+        plot_kwargs=custom_kwargs,
         save_fig=save_fig,
         save_args=save_args,
     )
@@ -37,6 +37,7 @@ def fit_spectrum_parameters(spectrum_dict, save_fig=False, save_args=None):
     Plot the fit spectrum from the specified dictionary and save figure.
     """
     custom_kwargs = {"linestyle": "-"}
+
     fig, axes = plt.subplots(
         2,
         1,
@@ -47,8 +48,9 @@ def fit_spectrum_parameters(spectrum_dict, save_fig=False, save_args=None):
     xplot.plot_fit_spectrum(
         spectrum_dict,
         ax=axes,
-        normalised_residual=True,
-        kwargs=custom_kwargs,
+        x_axis="BE",
+        normalised_residual=False,
+        plot_kwargs=custom_kwargs,
         save_fig=save_fig,
         save_args=save_args,
     )
@@ -71,7 +73,7 @@ def main():
     run_convert_all_vms_in_project = False
     run_plot_fit_report = True
     run_plot_fit_spectrum = True
-    save_figures = True
+    save_figures = False
     save_args = {"format": "png", "save_folder": save_folder}
 
     if run_convert_all_vms_in_project:
