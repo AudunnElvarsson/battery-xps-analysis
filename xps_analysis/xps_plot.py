@@ -198,7 +198,7 @@ def plot_fit_report(
         )
         if isinstance(file_name, (list, np.ndarray)):
             file_name = file_name[0] if len(file_name) else "report"
-    _save_figure(fig, name_list=[file_name], save_args=save_args, prefix="")
+        _save_figure(fig, name_list=[file_name], save_args=save_args, prefix="")
 
     if plot_here:
         plt.show()
@@ -389,7 +389,7 @@ def plot_fit_spectrum(
         )
         if isinstance(file_name, (list, np.ndarray)):
             file_name = file_name[0] if len(file_name) else "spectrum"
-    _save_figure(fig, name_list=[file_name], save_args=save_args, prefix="")
+        _save_figure(fig, name_list=[file_name], save_args=save_args, prefix="")
 
     if plot_here:
         plt.show()
