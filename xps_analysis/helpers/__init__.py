@@ -10,6 +10,7 @@ from .table_processor import (
 )
 from .data_analyzer import process_parameter
 from .formatter import format_table_value
+from .core_level_extractor import extract_core_level
 
 __all__ = [
     # File parsing
@@ -25,4 +26,6 @@ __all__ = [
     "process_parameter",
     # Formatting
     "format_table_value",
+    # Core level extraction
+    "extract_core_level",
 ]

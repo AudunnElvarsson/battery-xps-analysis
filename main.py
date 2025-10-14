@@ -83,6 +83,7 @@ def main():
 
     if run_plot_fit_report:
         report_dict = xp.read_fit_report_file(fit_report_file)
+        print(report_dict.keys())
         fit_report_parameters(report_dict, save_fig=save_figures, save_args=save_args)
 
     if run_plot_fit_spectrum:

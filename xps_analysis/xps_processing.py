@@ -31,6 +31,7 @@ from .helpers import (
     parse_report_rows,
     process_parameter,
     format_table_value,
+    extract_core_level,
 )
 
 
@@ -87,6 +88,9 @@ def read_fit_report_file(file_path):
         result_dict["File Name"] = file_base
     except (OSError, ValueError):
         result_dict["File Name"] = None
+
+    # Extract core level from filename
+    result_dict["Core Level"] = extract_core_level(file_path)
 
     return result_dict
 
@@ -157,6 +161,9 @@ def read_fit_spectrum_file(file_path):
     except (OSError, ValueError):
         renamed_dict["File Name"] = None
 
+    # Extract core level from filename
+    renamed_dict["Core Level"] = extract_core_level(file_path)
+
     return renamed_dict
 
 
@@ -200,7 +207,7 @@ def print_fit_report_averages(fit_data):
     numeric_parameters, string_parameters = [], []
     component_data = {comp: {} for comp in component_names}
 
-    skip_keys = {"Constr.", "File Name", "Name", "Area/(RSF*T*MFP)"}
+    skip_keys = {"Constr.", "File Name", "Name", "Area/(RSF*T*MFP)", "Core Level"}
     for key, data_array in fit_data.items():
         if any(skip in key for skip in skip_keys) or not isinstance(
             data_array, np.ndarray
@@ -228,8 +235,9 @@ def print_fit_report_averages(fit_data):
                 max_width = max(max_width, len(value_str))
         param_widths[param] = min(max_width + 2, 15)
 
-    # Print table
-    print("╔═══ Average values from fit report (by component) ═══╗\n")
+        # Print table
+        core_level = fit_data.get("Core Level") or "Unknown"
+    print(f"╔═══ Average values from fit report (by component) - {core_level} ═══╗\n")
 
     # Header and separator
     header = f"{'Component':<{max_comp_width}} │" + "".join(
