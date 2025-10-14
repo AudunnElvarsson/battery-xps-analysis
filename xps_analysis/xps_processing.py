@@ -9,6 +9,18 @@ numpy arrays (typically 1D or 2D arrays with dtype float or object).
 The module focuses on robust parsing of tab-separated text files produced by
 XPS fitting tools, handling common quirks such as duplicate "Name" columns,
 underscore-delimited headers, and comma-separated numeric fields inside cells.
+
+Key Functions
+-------------
+read_fit_report_file : Parse XPS fit report files into structured dictionaries
+read_fit_spectrum_file : Parse XPS spectrum data files into dictionaries
+print_fit_report_averages : Print table of average values from fit report data
+
+Example Usage
+-------------
+>>> from xps_analysis.xps_processing import read_fit_report_file, print_fit_report_averages
+>>> fit_data = read_fit_report_file('my_fit_report.txt')
+>>> print_fit_report_averages(fit_data)
 """
 
 import os
@@ -394,3 +406,188 @@ def read_fit_spectrum_file(file_path):
         renamed_dict["File Name"] = None
 
     return renamed_dict
+
+
+def print_fit_report_averages(fit_data):
+    """Print a table with average values for numeric entries in fit report data.
+
+    This function calculates and displays averages for all numeric entries
+    in the dictionary returned by ``read_fit_report_file``. Averages are calculated
+    for each component (rows) across multiple measurements (columns). Constraint
+    parameters (containing "Constr." in the name) and the "File Name" entry are excluded.
+    String parameters like "Line Shape" and "Comp Label" are included and checked for
+    consistency across measurements.
+
+    Parameters
+    ----------
+    fit_data : dict
+        Dictionary returned by ``read_fit_report_file`` containing 2D NumPy
+        arrays with fit parameters.
+    """
+    if fit_data is None:
+        print("No data to process.")
+        return
+
+    # Check if we have component names
+    if "Name" not in fit_data:
+        print("No 'Name' column found in data.")
+        return
+
+    # Get component names from the first column
+    name_array = fit_data["Name"]
+    if name_array.size == 0:
+        print("No component data found.")
+        return
+
+    # Extract component names (first column of the Name array)
+    if name_array.ndim == 2:
+        component_names = [str(name_array[i, 0]) for i in range(name_array.shape[0])]
+    else:
+        component_names = [str(name_array[0]) if name_array.size > 0 else "Unknown"]
+
+    # Collect parameters and their averages/values
+    numeric_parameters = []
+    string_parameters = []
+    component_data = {comp: {} for comp in component_names}
+
+    # Process each parameter (excluding constraints and file name)
+    for key, data_array in fit_data.items():
+        # Skip constraint parameters, file name, and Area/(RSF*T*MFP)
+        if (
+            "Constr." in key
+            or key == "File Name"
+            or key == "Name"
+            or key == "Area/(RSF*T*MFP)"
+            or not isinstance(data_array, np.ndarray)
+        ):
+            continue
+
+        # Rename "Binding Energy (eV)" to "BE" and "Comp Label" to "label"
+        display_key = key
+        if key == "Binding Energy (eV)":
+            display_key = "BE"
+        elif key == "Comp Label":
+            display_key = "Label"
+
+        # Check if array contains numeric data
+        is_numeric = False
+        if data_array.dtype != object:
+            is_numeric = True
+        else:
+            # Check if first element is numeric
+            first_elem = data_array.flat[0] if data_array.size > 0 else None
+            if isinstance(first_elem, (int, float, np.integer, np.floating)):
+                is_numeric = True
+
+        if is_numeric:
+            numeric_parameters.append(display_key)
+            # Calculate average for each component (average across columns for each row)
+            for comp_idx, comp_name in enumerate(component_names):
+                if comp_idx < data_array.shape[0]:
+                    comp_row = data_array[comp_idx, :]
+
+                    # Collect numeric values from this row
+                    numeric_values = []
+                    for value in comp_row:
+                        if isinstance(value, (int, float, np.integer, np.floating)):
+                            if not np.isnan(value):
+                                numeric_values.append(float(value))
+                        elif isinstance(value, list):
+                            for item in value:
+                                if isinstance(
+                                    item, (int, float, np.integer, np.floating)
+                                ):
+                                    if not np.isnan(item):
+                                        numeric_values.append(float(item))
+
+                    # Calculate average
+                    if numeric_values:
+                        avg_value = np.mean(numeric_values)
+                        component_data[comp_name][display_key] = avg_value
+        else:
+            # Handle string parameters
+            string_parameters.append(display_key)
+            for comp_idx, comp_name in enumerate(component_names):
+                if comp_idx < data_array.shape[0]:
+                    comp_row = data_array[comp_idx, :]
+
+                    # Collect string values from this row
+                    string_values = []
+                    for value in comp_row:
+                        if isinstance(value, str):
+                            string_values.append(value)
+
+                    # Check for consistency
+                    if string_values:
+                        unique_values = list(set(string_values))
+                        if len(unique_values) == 1:
+                            component_data[comp_name][display_key] = unique_values[0]
+                        else:
+                            # Multiple different values - note inconsistency
+                            component_data[comp_name][
+                                display_key
+                            ] = f"MIXED: {', '.join(unique_values)}"
+
+    # Combine parameters in desired order: numeric first, then strings
+    all_parameters = numeric_parameters + string_parameters
+
+    if not all_parameters:
+        print("No parameters found to display.")
+        return
+
+    # Print the 2D table with improved formatting
+    print("╔═══ Average values from fit report (by component) ═══╗")
+    print()
+
+    # Calculate column widths dynamically
+    max_comp_width = max(len(comp) for comp in component_names)
+    max_comp_width = max(max_comp_width, len("Component"))
+
+    # Calculate column widths for parameters
+    param_widths = {}
+    for param in all_parameters:
+        max_width = len(param)
+        for comp_name in component_names:
+            if param in component_data[comp_name]:
+                value = component_data[comp_name][param]
+                if isinstance(value, (int, float)):
+                    value_str = f"{value:.2f}"
+                else:
+                    value_str = str(value)
+                max_width = max(max_width, len(value_str))
+        param_widths[param] = min(max_width + 2, 15)  # Cap at 15 chars, add padding
+
+    # Header row with better formatting
+    header = f"{'Component':<{max_comp_width}} │"
+    for param in all_parameters:
+        header += f" {param:^{param_widths[param]}} │"
+    print(header)
+
+    # Separator line - fix alignment to match header spacing exactly
+    separator = "─" * max_comp_width + "─┼"
+    for i, param in enumerate(all_parameters):
+        # Each header param section is " {param:^width} │" = width + 2 chars for spaces + 1 for │
+        separator += "─" * (param_widths[param] + 2) + "┼"
+    print(separator)
+
+    # Data rows with improved formatting
+    for comp_name in component_names:
+        row = f"{comp_name:<{max_comp_width}} │"
+        for param in all_parameters:
+            if param in component_data[comp_name]:
+                value = component_data[comp_name][param]
+                if isinstance(value, (int, float)):
+                    value_str = f"{value:.2f}"
+                    row += f" {value_str:>{param_widths[param]}} │"
+                else:
+                    # String value - truncate if too long
+                    str_val = str(value)
+                    if len(str_val) > param_widths[param]:
+                        str_val = str_val[: param_widths[param] - 3] + "..."
+                    row += f" {str_val:^{param_widths[param]}} │"
+            else:
+                row += f" {'N/A':^{param_widths[param]}} │"
+        print(row)
+
+    print()
+    print("╚" + "═" * (len(header) - 2) + "╝")
