@@ -20,260 +20,18 @@ print_fit_report_averages : Print table of average values from fit report data
 import os
 import numpy as np
 
-
-def _find_header(lines, startswith_tuple, required_substring=None):
-    """Find and return the first header line that matches criteria.
-
-    This scans ``lines`` and returns the first line that begins with any of the
-    strings in ``startswith_tuple``. If ``required_substring`` is provided,
-    the line must also contain that substring.
-
-    Parameters
-    ----------
-    lines : list[str]
-        File content split into lines.
-    startswith_tuple : tuple[str]
-        Tuple of possible prefixes for the header line (e.g. ("Name",)).
-    required_substring : str | None
-        Optional substring that must be present in the header line.
-
-    Returns
-    -------
-    tuple[str | None, int | None]
-        (header_line, index) if found, otherwise (None, None).
-    """
-    for i, line in enumerate(lines):
-        if line.strip().startswith(startswith_tuple):
-            if required_substring is None or required_substring in line:
-                return line, i
-    return None, None
-
-
-def _parse_data_rows(lines, header_idx, columns, skip_empty=True, break_on_empty=False):
-    """Parse tab-separated rows following a header into a dict of column lists.
-
-    Each value is converted to ``float`` when possible; non-convertible values
-    are left as strings. Lines that do not match the expected column count are
-    ignored.
-
-    Parameters
-    ----------
-    lines : list[str]
-        File content lines.
-    header_idx : int
-        Index of the header line in ``lines``.
-    columns : list[str]
-        Expected column names corresponding to a row's tab-separated fields.
-    skip_empty : bool
-        If True, skip empty lines between data rows; if False, include them
-        (they will be ignored if column lengths don't match).
-    break_on_empty : bool
-        If True, stop parsing when the first empty line after the header is
-        encountered.
-
-    Returns
-    -------
-    dict[str, list]
-        Mapping from column name to list of parsed values (floats or strings).
-    """
-    data_dict = {col: [] for col in columns}
-    for line in lines[header_idx + 1 :]:
-        if not line.strip():
-            if break_on_empty:
-                break
-            if skip_empty:
-                continue
-        values = [v.strip() for v in line.split("\t")]
-        if len(values) != len(columns):
-            continue
-        for col, val in zip(columns, values):
-            try:
-                data_dict[col].append(float(val))
-            except ValueError:
-                data_dict[col].append(val)
-    return data_dict
-
-
-def _convert_data_types(data_dict):
-    """Convert each list in ``data_dict`` to a NumPy array.
-
-    Attempts to create a float array for each column and falls back to an
-    object array when conversion fails. The input dict is mutated and
-    returned for convenience.
-
-    Parameters
-    ----------
-    data_dict : dict[str, list]
-        Mapping of column names to lists of values.
-
-    Returns
-    -------
-    dict[str, numpy.ndarray]
-        The same mapping where each value is a NumPy array.
-    """
-    for col in data_dict:
-        try:
-            data_dict[col] = np.array(data_dict[col], dtype=float)
-        except ValueError:
-            data_dict[col] = np.array(data_dict[col], dtype=object)
-    return data_dict
-
-
-def _clean_header(header_line):
-    """Normalize a header line into a cleaned ``header`` and the original ``raw_header``.
-
-    Common cleaning steps:
-    - split on tabs and strip whitespace,
-    - remove a duplicated ``Name`` column if present (many XPS exports repeat it).
-
-    Parameters
-    ----------
-    header_line : str
-        The raw header line from the file.
-
-    Returns
-    -------
-    tuple[list[str], list[str]]
-        (cleaned_header, raw_header)
-    """
-    raw_header = [h.strip() for h in header_line.split("\t") if h.strip()]
-    header = []
-    name_seen = False
-    for h in raw_header:
-        if h == "Name":
-            if name_seen:
-                continue
-            name_seen = True
-        header.append(h)
-    return header, raw_header
-
-
-def _group_rows_by_name(table_data, name_idx):
-    """Group table rows into sub-tables when a repeating name indicates a new group.
-
-    Many XPS report tables list multiple fit parameters for a component and then
-    repeat the component label for the next component. This function splits
-    ``table_data`` into groups where each group belongs to a single logical
-    entry.
-
-    Parameters
-    ----------
-    table_data : list[list[str]]
-        Parsed table rows (each row is a list of string fields).
-    name_idx : int
-        Column index used to detect repeated names (e.g. index of "Comp Label").
-
-    Returns
-    -------
-    list[list[list[str]]]
-        A list of groups; each group is a list of rows (rows are lists of strings).
-    """
-    groups = []
-    current_group = []
-    unique_names = set()
-    for row in table_data:
-        name = row[name_idx]
-        if name in unique_names:
-            groups.append(current_group)
-            current_group = []
-            unique_names = set()
-        current_group.append(row)
-        unique_names.add(name)
-    if current_group:
-        groups.append(current_group)
-    return groups
-
-
-def _table_to_dict(groups, header):
-    """Convert grouped table rows into a dict of 2D NumPy arrays.
-
-    Each header becomes a key mapped to a 2D object array where columns
-    represent distinct grouped entries (e.g. chemical components) and rows
-    correspond to fit parameters.
-
-    The parser handles numeric fields, comma-separated numeric lists ("x, y"),
-    and leaves non-numeric entries as strings.
-
-    Parameters
-    ----------
-    groups : list[list[list[str]]]
-        Output from ``_group_rows_by_name``; groups of raw string rows.
-    header : list[str]
-        Cleaned header column names.
-
-    Returns
-    -------
-    dict[str, numpy.ndarray]
-        Mapping of header -> 2D NumPy array (dtype object) with shape
-        (n_parameters, n_components).
-    """
-
-    def parse_value(val):
-        # If value is of form 'x , y', convert to [x, y] as floats
-        if "," in val:
-            parts = [p.strip() for p in val.split(",")]
-            try:
-                return [float(p) for p in parts]
-            except ValueError:
-                return val
-        try:
-            return float(val)
-        except ValueError:
-            return val
-
-    result = {h: [] for h in header}
-    for group in groups:
-        arr = np.array(group)
-        for idx, h in enumerate(header):
-            col = arr[:, idx]
-            col_converted = [parse_value(v) for v in col]
-            result[h].append(col_converted)
-    for h in result:
-        # Use dtype=object to allow arrays and floats
-        result[h] = np.transpose(np.array(result[h], dtype=object))
-    return result
-
-
-def _parse_report_rows(lines, header_idx, header, raw_header):
-    """Parse the rows of a report table into a list of cleaned rows.
-
-    This helper reads lines following ``header_idx`` until the first empty
-    line. If the raw header contained a duplicated ``Name`` column, the
-    corresponding duplicate value is removed from parsed rows so the row length
-    matches the cleaned ``header``.
-
-    Parameters
-    ----------
-    lines : list[str]
-        File content lines.
-    header_idx : int
-        Index of the header line.
-    header : list[str]
-        Cleaned header produced by ``_clean_header``.
-    raw_header : list[str]
-        Original header tokens before cleaning.
-
-    Returns
-    -------
-    list[list[str]]
-        Parsed, cleaned rows (lists of field strings).
-    """
-    rows = []
-    name_indices = [i for i, h in enumerate(raw_header) if h == "Name"]
-    for line in lines[header_idx + 1 :]:
-        if not line.strip():
-            break
-        row = [v.strip() for v in line.split("\t") if v.strip()]
-        # If an extra 'Name' column exists in raw data, remove the duplicate entry
-        if (
-            len(name_indices) > 1
-            and len(row) > len(header)
-            and len(row) > name_indices[1]
-        ):
-            del row[name_indices[1]]
-        if row:
-            rows.append(row)
-    return rows
+# Import parsing utilities from submodules
+from .helpers import (
+    find_header,
+    parse_data_rows,
+    convert_data_types,
+    clean_header,
+    group_rows_by_name,
+    table_to_dict,
+    parse_report_rows,
+    process_parameter,
+    format_table_value,
+)
 
 
 def read_fit_report_file(file_path):
@@ -308,21 +66,21 @@ def read_fit_report_file(file_path):
         lines = f.readlines()
 
     # Find header line and index
-    header_line, header_idx = _find_header(
+    header_line, header_idx = find_header(
         lines, ("Name",), required_substring="Comp Label"
     )
     if header_idx is None:
         print("No table header found.")
         return None
 
-    header, raw_header = _clean_header(header_line)
+    header, raw_header = clean_header(header_line)
     header = ["Binding Energy (eV)" if h == "Position" else h for h in header]
 
     # Parse table rows and convert to structured dict
-    table_rows = _parse_report_rows(lines, header_idx, header, raw_header)
+    table_rows = parse_report_rows(lines, header_idx, header, raw_header)
     name_idx = header.index("Comp Label")
-    groups = _group_rows_by_name(table_rows, name_idx)
-    result_dict = _table_to_dict(groups, header)
+    groups = group_rows_by_name(table_rows, name_idx)
+    result_dict = table_to_dict(groups, header)
 
     try:
         file_base = os.path.splitext(os.path.basename(file_path))[0]
@@ -382,15 +140,15 @@ def read_fit_spectrum_file(file_path):
         lines = f.readlines()
 
     # Find header line and index
-    header_line, header_idx = _find_header(lines, ("KE_", "BE_", "CPS_"))
+    header_line, header_idx = find_header(lines, ("KE_", "BE_", "CPS_"))
     if header_idx is None:
         raise ValueError("No data header found in file.")
 
     columns = [col.strip() for col in header_line.split("\t")]
-    data_dict = _parse_data_rows(
+    data_dict = parse_data_rows(
         lines, header_idx, columns, skip_empty=True, break_on_empty=False
     )
-    data_dict = _convert_data_types(data_dict)
+    data_dict = convert_data_types(data_dict)
     renamed_dict = _rename_spectrum_keys(data_dict)
 
     try:
@@ -400,73 +158,6 @@ def read_fit_spectrum_file(file_path):
         renamed_dict["File Name"] = None
 
     return renamed_dict
-
-
-def _extract_numeric_values(comp_row):
-    """Extract all numeric values from a component row, handling lists and scalars."""
-    numeric_values = []
-    for value in comp_row:
-        if isinstance(value, (int, float, np.integer, np.floating)) and not np.isnan(
-            value
-        ):
-            numeric_values.append(float(value))
-        elif isinstance(value, list):
-            numeric_values.extend(
-                float(item)
-                for item in value
-                if isinstance(item, (int, float, np.integer, np.floating))
-                and not np.isnan(item)
-            )
-    return numeric_values
-
-
-def _is_numeric_array(data_array):
-    """Check if array contains numeric data."""
-    if data_array.dtype != object:
-        return True
-    first_elem = data_array.flat[0] if data_array.size > 0 else None
-    return isinstance(first_elem, (int, float, np.integer, np.floating))
-
-
-def _process_parameter(key, data_array, component_names, component_data):
-    """Process a single parameter and update component_data."""
-    # Rename keys for display
-    display_key = {"Binding Energy (eV)": "BE", "Comp Label": "Label"}.get(key, key)
-
-    if _is_numeric_array(data_array):
-        # Process numeric parameter
-        for comp_idx, comp_name in enumerate(component_names):
-            if comp_idx < data_array.shape[0]:
-                numeric_values = _extract_numeric_values(data_array[comp_idx, :])
-                if numeric_values:
-                    component_data[comp_name][display_key] = np.mean(numeric_values)
-        return display_key, True
-    else:
-        # Process string parameter
-        for comp_idx, comp_name in enumerate(component_names):
-            if comp_idx < data_array.shape[0]:
-                string_values = [
-                    v for v in data_array[comp_idx, :] if isinstance(v, str)
-                ]
-                if string_values:
-                    unique_values = list(set(string_values))
-                    component_data[comp_name][display_key] = (
-                        unique_values[0]
-                        if len(unique_values) == 1
-                        else f"MIXED: {', '.join(unique_values)}"
-                    )
-        return display_key, False
-
-
-def _format_table_value(value, width):
-    """Format a value for table display with width constraints."""
-    if isinstance(value, (int, float)):
-        return f"{value:.2f}", True
-    else:
-        str_val = str(value)
-        if len(str_val) > width:
-            str_val = str_val[: width - 3] + "..."
-        return str_val, False
 
 
 def print_fit_report_averages(fit_data):
@@ -516,7 +207,7 @@ def print_fit_report_averages(fit_data):
         ):
             continue
 
-        display_key, is_numeric = _process_parameter(
+        display_key, is_numeric = process_parameter(
             key, data_array, component_names, component_data
         )
         (numeric_parameters if is_numeric else string_parameters).append(display_key)
@@ -533,7 +224,7 @@ def print_fit_report_averages(fit_data):
         max_width = len(param)
         for comp_name in component_names:
             if param in component_data[comp_name]:
-                value_str, _ = _format_table_value(component_data[comp_name][param], 15)
+                value_str, _ = format_table_value(component_data[comp_name][param], 15)
                 max_width = max(max_width, len(value_str))
         param_widths[param] = min(max_width + 2, 15)
 
@@ -557,7 +248,7 @@ def print_fit_report_averages(fit_data):
         row = f"{comp_name:<{max_comp_width}} │"
         for param in all_parameters:
             if param in component_data[comp_name]:
-                value_str, is_numeric = _format_table_value(
+                value_str, is_numeric = format_table_value(
                     component_data[comp_name][param], param_widths[param]
                 )
                 alignment = ">" if is_numeric else "^"
