@@ -19,6 +19,8 @@ def fit_report_parameters(report_dict, save_fig=False, save_args=None):
     """
     Plot the composition report from the specified file path and save figure.
     """
+    xp.print_fit_report_averages(report_dict)
+
     custom_kwargs = {"linestyle": "-"}
     fig, axes = plt.subplots(figsize=(8, 6))
     fig.set_tight_layout(True)
@@ -64,10 +66,10 @@ def main():
         r"c:/Users/audun/OneDrive - Chalmers/Documents/Research/"
         r"1_Improving_XPS_Analysis_Methods/1_data/"
     )
-    experiment_folder = r"250619_Gr_XPS_delithiated_and_lithiated/3_output/"
+    experiment_folder = r"250221_Gr_XPS_beam_damage_and_neutralizers/3_output/"
     save_folder = project_folder + experiment_folder
-    fit_report_file = save_folder + r"line_scan_delithiated_fit_report.txt"
-    fit_spectrum_file = save_folder + r"line_scan_delithiated_spectrum_fit_0.txt"
+    fit_report_file = save_folder + r"2_beam_damage_unwashed_fit_report_C1s.txt"
+    fit_spectrum_file = save_folder + r"2_beam_damage_unwashed_spectrum_fit_C1s.txt"
 
     # Flags to control execution
     run_convert_all_vms_in_project = False
