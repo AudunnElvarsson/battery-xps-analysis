@@ -106,9 +106,9 @@ def plot_report(report_dict, ax=None, save_fig=False, save_args=None, **kwargs):
     main_ax.set_xlabel("Experimental Variable")
     main_ax.set_ylabel(col_full)
 
-    # Add core level to the title
+    # Add core level as the title
     core_level = report_dict.get("Core Level") or "Unknown"
-    main_ax.set_title(f"{col_full} (Core: {core_level})")
+    main_ax.set_title(core_level)
 
     main_ax.legend()
 
@@ -186,13 +186,9 @@ def plot_spectrum(spectrum_dict, ax=None, save_fig=False, save_args=None, **kwar
     main_ax.set_xlabel(x_label)
     main_ax.set_ylabel("Intensity (a.u.)")
 
-    # Add core level to the title
+    # Add core level as the title
     core_level = spectrum_dict.get("Core Level") or "Unknown"
-    title_name = derive_file_name(spectrum_dict)
-    if title_name and title_name != "spectrum":
-        fig.suptitle(f"{title_name} (Core: {core_level})")
-    else:
-        fig.suptitle(f"Spectrum (Core: {core_level})")
+    fig.suptitle(core_level)
 
     if handles:
         main_ax.legend(handles, labels)
