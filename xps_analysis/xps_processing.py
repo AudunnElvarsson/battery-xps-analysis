@@ -21,7 +21,7 @@ import os
 import numpy as np
 
 # Import parsing utilities from submodules
-from .helpers import (
+from .processing_helpers import (
     find_header,
     parse_data_rows,
     convert_data_types,

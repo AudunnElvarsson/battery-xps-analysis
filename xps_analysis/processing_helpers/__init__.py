@@ -1,4 +1,4 @@
-"""Parsers package initialization."""
+"""Processing helpers package initialization."""
 
 # Make key functions available at package level for easy importing
 from .file_parser import find_header, parse_data_rows, convert_data_types

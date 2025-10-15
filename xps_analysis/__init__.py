@@ -1,4 +1,14 @@
-"""This is the xps_analysis package."""
+"""XPS Analysis Package for Battery Research.
+
+Tools for processing and analyzing X-ray Photoelectron Spectroscopy (XPS) data
+from CasaXPS software, with a focus on battery material characterization.
+
+Main Modules
+------------
+xps_processing : Data processing (read fit reports/spectra, compute averages)
+xps_plot : Visualization (plot reports and spectra with matplotlib)
+xps_utilities : General utility functions
+"""
 
 import os
 import sys
