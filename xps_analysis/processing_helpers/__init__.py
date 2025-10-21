@@ -1,7 +1,12 @@
 """Processing helpers package initialization."""
 
 # Make key functions available at package level for easy importing
-from .file_parser import find_header, parse_data_rows, convert_data_types
+from .file_parser import (
+    find_header,
+    parse_data_rows,
+    convert_data_types,
+    add_file_metadata,
+)
 from .table_processor import (
     clean_header,
     group_rows_by_name,
@@ -17,6 +22,7 @@ __all__ = [
     "find_header",
     "parse_data_rows",
     "convert_data_types",
+    "add_file_metadata",
     # Table processing
     "clean_header",
     "group_rows_by_name",

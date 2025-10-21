@@ -5,7 +5,9 @@ This module contains low-level functions for parsing XPS data files,
 including header detection, data row parsing, and type conversion.
 """
 
+import os
 import numpy as np
+from .core_level_extractor import extract_core_level
 
 
 def find_header(lines, startswith_tuple, required_substring=None):
@@ -103,4 +105,34 @@ def convert_data_types(data_dict):
             data_dict[col] = np.array(data_dict[col], dtype=float)
         except ValueError:
             data_dict[col] = np.array(data_dict[col], dtype=object)
+    return data_dict
+
+
+def add_file_metadata(data_dict, file_path):
+    """Add file name and core level metadata to a data dictionary.
+
+    Extracts the base filename (without path or extension) and the core level
+    from the file path, adding them as "File Name" and "Core Level" keys to
+    the provided dictionary.
+
+    Parameters
+    ----------
+    data_dict : dict
+        Dictionary to which metadata will be added.
+    file_path : str
+        Path to the file being processed.
+
+    Returns
+    -------
+    dict
+        The same dictionary with added "File Name" and "Core Level" keys.
+    """
+    try:
+        file_base = os.path.splitext(os.path.basename(file_path))[0]
+        data_dict["File Name"] = file_base
+    except (OSError, ValueError):
+        data_dict["File Name"] = None
+
+    data_dict["Core Level"] = extract_core_level(file_path)
+
     return data_dict

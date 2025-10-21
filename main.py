@@ -19,7 +19,7 @@ def report_parameters(report_dict, save_fig=False, save_args=None):
     """
     Plot the composition report from the specified file path and save figure.
     """
-    xp.print_fit_report_averages(report_dict)
+    xp.print_report_averages(report_dict)
 
     custom_kwargs = {"linestyle": "-"}
     fig, axes = plt.subplots(figsize=(8, 6))
@@ -68,8 +68,8 @@ def main():
     )
     experiment_folder = r"250221_Gr_XPS_beam_damage_and_neutralizers/3_output/"
     save_folder = project_folder + experiment_folder
-    report_file = save_folder + r"2_beam_damage_unwashed_fit_report_C1s.txt"
-    spectrum_file = save_folder + r"2_beam_damage_unwashed_spectrum_fit_C1s.txt"
+    report_file = save_folder + r"2_beam_damage_unwashed_report_C1s.txt"
+    spectrum_file = save_folder + r"2_beam_damage_unwashed_spectrum_C1s.txt"
 
     # Flags to control execution
     run_convert_all_vms_in_project = False
@@ -82,11 +82,11 @@ def main():
         convert_all_vms(project_folder)
 
     if run_plot_report:
-        report_dict = xp.read_fit_report_file(report_file)
+        report_dict = xp.read_report_file(report_file)
         report_parameters(report_dict, save_fig=save_figures, save_args=save_args)
 
     if run_plot_spectrum:
-        spectrum_dict = xp.read_fit_spectrum_file(spectrum_file)
+        spectrum_dict = xp.read_spectrum_file(spectrum_file)
         spectrum_parameters(spectrum_dict, save_fig=save_figures, save_args=save_args)
 
     plt.show()

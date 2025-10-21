@@ -12,9 +12,9 @@ underscore-delimited headers, and comma-separated numeric fields inside cells.
 
 Key Functions
 -------------
-read_fit_report_file : Parse XPS fit report files into structured dictionaries
-read_fit_spectrum_file : Parse XPS spectrum data files into dictionaries
-print_fit_report_averages : Print table of average values from fit report data
+read_report_file : Parse XPS report files into structured dictionaries
+read_spectrum_file : Parse XPS spectrum data files into dictionaries
+print_report_averages : Print table of average values from report data
 """
 
 import os
@@ -31,11 +31,11 @@ from .processing_helpers import (
     parse_report_rows,
     process_parameter,
     format_table_value,
-    extract_core_level,
+    add_file_metadata,
 )
 
 
-def read_fit_report_file(file_path):
+def read_report_file(file_path):
     """Read the primary fit report table from an XPS report file.
 
     The function locates the first table header containing "Comp Label" and
@@ -56,8 +56,6 @@ def read_fit_report_file(file_path):
         Mapping from header names to 2D NumPy arrays, or ``None`` if the file
         does not exist or no table header is found.
     """
-
-    # use module-level helpers: _clean_header, _group_rows_by_name, _table_to_dict
 
     if not os.path.isfile(file_path):
         print(f"File not found: {file_path}")
@@ -82,20 +80,12 @@ def read_fit_report_file(file_path):
     name_idx = header.index("Comp Label")
     groups = group_rows_by_name(table_rows, name_idx)
     result_dict = table_to_dict(groups, header)
-
-    try:
-        file_base = os.path.splitext(os.path.basename(file_path))[0]
-        result_dict["File Name"] = file_base
-    except (OSError, ValueError):
-        result_dict["File Name"] = None
-
-    # Extract core level from filename
-    result_dict["Core Level"] = extract_core_level(file_path)
+    add_file_metadata(result_dict, file_path)
 
     return result_dict
 
 
-def read_fit_spectrum_file(file_path):
+def read_spectrum_file(file_path):
     """Parse an XPS spectrum (data) file into a dictionary of NumPy arrays.
 
     The function locates a header line (starting with one of ``"KE_"``,
@@ -140,6 +130,10 @@ def read_fit_spectrum_file(file_path):
             renamed[new_key] = arr
         return renamed
 
+    if not os.path.isfile(file_path):
+        print(f"File not found: {file_path}")
+        return None
+
     with open(file_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
@@ -154,24 +148,16 @@ def read_fit_spectrum_file(file_path):
     )
     data_dict = convert_data_types(data_dict)
     renamed_dict = _rename_spectrum_keys(data_dict)
-
-    try:
-        file_base = os.path.splitext(os.path.basename(file_path))[0]
-        renamed_dict["File Name"] = file_base
-    except (OSError, ValueError):
-        renamed_dict["File Name"] = None
-
-    # Extract core level from filename
-    renamed_dict["Core Level"] = extract_core_level(file_path)
+    add_file_metadata(renamed_dict, file_path)
 
     return renamed_dict
 
 
-def print_fit_report_averages(fit_data):
+def print_report_averages(fit_data):
     """Print a table with average values for numeric entries in fit report data.
 
     This function calculates and displays averages for all numeric entries
-    in the dictionary returned by ``read_fit_report_file``. Averages are calculated
+    in the dictionary returned by ``read_report_file``. Averages are calculated
     for each component (rows) across multiple measurements (columns). Constraint
     parameters (containing "Constr." in the name) and the "File Name" entry are excluded.
     String parameters like "Line Shape" and "Comp Label" are included and checked for
@@ -180,7 +166,7 @@ def print_fit_report_averages(fit_data):
     Parameters
     ----------
     fit_data : dict
-        Dictionary returned by ``read_fit_report_file`` containing 2D NumPy
+        Dictionary returned by ``read_report_file`` containing 2D NumPy
         arrays with fit parameters.
     """
     if not fit_data or "Name" not in fit_data or fit_data["Name"].size == 0:
