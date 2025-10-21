@@ -208,7 +208,7 @@ def print_report_averages(fit_data):
     print(
         f"{'═' * int(np.floor((len(header) - len(title)) / 2 - 1))}",
         title,
-        f"{'═' * int(np.ceil((len(header) - len(title)) / 2 - 1))}",
+        f"{'═' * int(np.ceil((len(header) - len(title)) / 2 - 1))}\n",
     )
     print(header)
     print(separator)
