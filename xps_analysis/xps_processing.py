@@ -18,6 +18,7 @@ print_report_averages : Print table of average values from report data
 """
 
 import os
+import numpy as np
 
 # Import parsing utilities from submodules
 from .processing_helpers import (
@@ -203,7 +204,12 @@ def print_report_averages(fit_data):
 
     # Print table
     core_level = fit_data.get("Core Level") or "Unknown"
-    print(f"╔═══ Average values from fit report (by component) - {core_level} ═══╗\n")
+    title = f"Average values from fit report (by component) - {core_level}"
+    print(
+        f"{'═' * int(np.floor((len(header) - len(title)) / 2 - 1))}",
+        title,
+        f"{'═' * int(np.ceil((len(header) - len(title)) / 2 - 1))}",
+    )
     print(header)
     print(separator)
 
@@ -214,4 +220,4 @@ def print_report_averages(fit_data):
             )
         )
 
-    print(f"\n╚{'═' * (len(header) - 2)}╝")
+    print(f"{'═' * len(header)}")
