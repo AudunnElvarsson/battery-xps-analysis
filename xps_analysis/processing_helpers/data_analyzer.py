@@ -62,3 +62,58 @@ def process_parameter(key, data_array, component_names, component_data):
                         else f"MIXED: {', '.join(unique_values)}"
                     )
         return display_key, False
+
+
+def extract_component_names(fit_data):
+    """Extract component names from fit data.
+
+    Parameters
+    ----------
+    fit_data : dict
+        Dictionary with 'Name' key containing component names.
+
+    Returns
+    -------
+    list[str]
+        List of component names extracted from the Name array.
+    """
+    name_array = fit_data["Name"]
+    if name_array.ndim == 2:
+        return [str(name_array[i, 0]) for i in range(name_array.shape[0])]
+    else:
+        return [str(name_array[0]) if name_array.size > 0 else "Unknown"]
+
+
+def process_all_parameters(fit_data, component_names):
+    """Process all parameters in fit data and organize by component.
+
+    Parameters
+    ----------
+    fit_data : dict
+        Dictionary returned by read_report_file.
+    component_names : list[str]
+        List of component names.
+
+    Returns
+    -------
+    tuple[list, list, dict]
+        (numeric_parameters, string_parameters, component_data) where
+        numeric_parameters and string_parameters are lists of parameter names,
+        and component_data is a dict mapping component names to their values.
+    """
+    numeric_parameters, string_parameters = [], []
+    component_data = {comp: {} for comp in component_names}
+
+    skip_keys = {"Constr.", "File Name", "Name", "Area/(RSF*T*MFP)", "Core Level"}
+    for key, data_array in fit_data.items():
+        if any(skip in key for skip in skip_keys) or not isinstance(
+            data_array, np.ndarray
+        ):
+            continue
+
+        display_key, is_numeric = process_parameter(
+            key, data_array, component_names, component_data
+        )
+        (numeric_parameters if is_numeric else string_parameters).append(display_key)
+
+    return numeric_parameters, string_parameters, component_data

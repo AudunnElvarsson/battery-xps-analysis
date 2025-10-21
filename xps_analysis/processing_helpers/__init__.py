@@ -13,8 +13,17 @@ from .table_processor import (
     table_to_dict,
     parse_report_rows,
 )
-from .data_analyzer import process_parameter
-from .formatter import format_table_value
+from .data_analyzer import (
+    process_parameter,
+    extract_component_names,
+    process_all_parameters,
+)
+from .formatter import (
+    format_table_value,
+    calculate_column_widths,
+    build_table_header,
+    build_table_row,
+)
 from .core_level_extractor import extract_core_level
 
 __all__ = [
@@ -30,8 +39,13 @@ __all__ = [
     "parse_report_rows",
     # Data analysis
     "process_parameter",
+    "extract_component_names",
+    "process_all_parameters",
     # Formatting
     "format_table_value",
+    "calculate_column_widths",
+    "build_table_header",
+    "build_table_row",
     # Core level extraction
     "extract_core_level",
 ]

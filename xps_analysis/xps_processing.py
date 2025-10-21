@@ -18,7 +18,6 @@ print_report_averages : Print table of average values from report data
 """
 
 import os
-import numpy as np
 
 # Import parsing utilities from submodules
 from .processing_helpers import (
@@ -29,9 +28,12 @@ from .processing_helpers import (
     group_rows_by_name,
     table_to_dict,
     parse_report_rows,
-    process_parameter,
-    format_table_value,
     add_file_metadata,
+    extract_component_names,
+    process_all_parameters,
+    calculate_column_widths,
+    build_table_header,
+    build_table_row,
 )
 
 
@@ -169,86 +171,47 @@ def print_report_averages(fit_data):
         Dictionary returned by ``read_report_file`` containing 2D NumPy
         arrays with fit parameters.
     """
-    if not fit_data or "Name" not in fit_data or fit_data["Name"].size == 0:
-        print(
-            "No data to process."
-            if not fit_data
-            else (
-                "No 'Name' column found in data."
-                if "Name" not in fit_data
-                else "No component data found."
-            )
-        )
+    # Validate input data
+    if not fit_data:
+        print("No data to process.")
         return
 
-    # Extract component names
-    name_array = fit_data["Name"]
-    component_names = (
-        [str(name_array[i, 0]) for i in range(name_array.shape[0])]
-        if name_array.ndim == 2
-        else [str(name_array[0]) if name_array.size > 0 else "Unknown"]
+    if "Name" not in fit_data:
+        print("No 'Name' column found in data.")
+        return
+
+    if fit_data["Name"].size == 0:
+        print("No component data found.")
+        return
+
+    # Extract component names and process parameters
+    component_names = extract_component_names(fit_data)
+    numeric_params, string_params, component_data = process_all_parameters(
+        fit_data, component_names
     )
 
-    # Process parameters
-    numeric_parameters, string_parameters = [], []
-    component_data = {comp: {} for comp in component_names}
-
-    skip_keys = {"Constr.", "File Name", "Name", "Area/(RSF*T*MFP)", "Core Level"}
-    for key, data_array in fit_data.items():
-        if any(skip in key for skip in skip_keys) or not isinstance(
-            data_array, np.ndarray
-        ):
-            continue
-
-        display_key, is_numeric = process_parameter(
-            key, data_array, component_names, component_data
-        )
-        (numeric_parameters if is_numeric else string_parameters).append(display_key)
-
-    all_parameters = numeric_parameters + string_parameters
+    all_parameters = numeric_params + string_params
     if not all_parameters:
         print("No parameters found to display.")
         return
 
-    # Calculate column widths
-    max_comp_width = max(len(comp) for comp in component_names + ["Component"])
-    param_widths = {}
-    for param in all_parameters:
-        max_width = len(param)
-        for comp_name in component_names:
-            if param in component_data[comp_name]:
-                value_str, _ = format_table_value(component_data[comp_name][param], 15)
-                max_width = max(max_width, len(value_str))
-        param_widths[param] = min(max_width + 2, 15)
+    # Calculate column widths and build table components
+    max_comp_width, param_widths = calculate_column_widths(
+        all_parameters, component_names, component_data
+    )
+    header, separator = build_table_header(max_comp_width, all_parameters, param_widths)
 
-        # Print table
-        core_level = fit_data.get("Core Level") or "Unknown"
+    # Print table
+    core_level = fit_data.get("Core Level") or "Unknown"
     print(f"╔═══ Average values from fit report (by component) - {core_level} ═══╗\n")
-
-    # Header and separator
-    header = f"{'Component':<{max_comp_width}} │" + "".join(
-        f" {p:^{param_widths[p]}} │" for p in all_parameters
-    )
-    separator = (
-        "─" * max_comp_width
-        + "─┼"
-        + "".join("─" * (param_widths[p] + 2) + "┼" for p in all_parameters)
-    )
     print(header)
     print(separator)
 
-    # Data rows
     for comp_name in component_names:
-        row = f"{comp_name:<{max_comp_width}} │"
-        for param in all_parameters:
-            if param in component_data[comp_name]:
-                value_str, is_numeric = format_table_value(
-                    component_data[comp_name][param], param_widths[param]
-                )
-                alignment = ">" if is_numeric else "^"
-                row += f" {value_str:{alignment}{param_widths[param]}} │"
-            else:
-                row += f" {'N/A':^{param_widths[param]}} │"
-        print(row)
+        print(
+            build_table_row(
+                comp_name, all_parameters, component_data, param_widths, max_comp_width
+            )
+        )
 
     print(f"\n╚{'═' * (len(header) - 2)}╝")
