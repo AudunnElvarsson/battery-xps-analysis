@@ -85,12 +85,28 @@ def plot_report(
     col_full = get_column_name(fit_param)
     plot_params = update_plot_params({"ls": "--", "lw": 1.5, "m": "o"}, plot_kwargs)
 
-    # Plot the data
-    plot_report_series(report_dict, main_ax, col_full, plot_params, calculate)
+    # Determine if axes should be swapped (for binding energy)
+    swap_axes = "Binding Energy" in col_full
 
-    # Configure labels, title and legend
-    main_ax.set_xlabel("Experimental Variable")
-    main_ax.set_ylabel(col_full)
+    # Plot the data
+    plot_report_series(
+        report_dict,
+        main_ax,
+        col_full,
+        plot_params,
+        {"calculate": calculate, "swap_axes": swap_axes},
+    )
+
+    # Configure labels, title and legend (swap labels if axes are swapped)
+    if swap_axes:
+        main_ax.set_xlabel(col_full)
+        main_ax.set_ylabel("Experimental Variable")
+        # Invert both axes for binding energy
+        main_ax.invert_xaxis()
+        main_ax.invert_yaxis()
+    else:
+        main_ax.set_xlabel("Experimental Variable")
+        main_ax.set_ylabel(col_full)
     main_ax.set_title(report_dict.get("Core Level") or "Unknown")
     legend = main_ax.legend()
     # Use monospace font for aligned legend text

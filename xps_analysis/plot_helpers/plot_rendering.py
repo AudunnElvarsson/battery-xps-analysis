@@ -152,11 +152,58 @@ def _calculate_statistic(numeric_vals, calculate):
         if len(numeric_vals) >= 2:
             return "diff", numeric_vals[-1] - numeric_vals[0]
         return "val", numeric_vals[0] if numeric_vals else 0
-    # calculate == "average"
-    return "avg", np.mean(numeric_vals) if numeric_vals else 0
+    return "avg", np.mean(numeric_vals) if numeric_vals else 0  # calculate == "average"
 
 
-def plot_report_series(report_dict, ax, col_full, params, calculate="average"):
+def _plot_component_series(ax, data_opts, params, plot_opts):
+    """Plot a single component series with optional average line.
+
+    Parameters
+    ----------
+    ax : Axes
+        Target axis for plotting.
+    data_opts : dict
+        Dictionary with keys 'x_vals', 'y_vals', and 'legend_text'.
+    params : dict
+        Keyword arguments forwarded to plot.
+    plot_opts : dict
+        Dictionary with keys 'stat_value' (float), 'calculate' (str),
+        and 'swap_axes' (bool).
+    """
+    x_vals = data_opts["x_vals"]
+    y_vals = data_opts["y_vals"]
+    legend_text = data_opts["legend_text"]
+    stat_value = plot_opts["stat_value"]
+    calculate = plot_opts["calculate"]
+    swap_axes = plot_opts["swap_axes"]
+
+    # Plot data (swap axes if requested)
+    if swap_axes:
+        (line,) = ax.plot(y_vals, x_vals, label=legend_text, **params)
+    else:
+        (line,) = ax.plot(x_vals, y_vals, label=legend_text, **params)
+
+    # Add horizontal/vertical average line if in average mode
+    if calculate == "average":
+        if swap_axes:
+            ax.plot(
+                [stat_value] * len(x_vals),
+                x_vals,
+                color=line.get_color(),
+                alpha=0.7,
+                linestyle=":",
+            )
+        else:
+            ax.plot(
+                x_vals,
+                [stat_value] * len(x_vals),
+                color=line.get_color(),
+                alpha=0.7,
+                linestyle=":",
+            )
+
+
+def plot_report_series(report_dict, ax, col_full, params, plot_options=None):
     """Plot rows from a fit report mapping onto an axis.
 
     Each row in the report is plotted as a separate series. A horizontal
@@ -174,10 +221,14 @@ def plot_report_series(report_dict, ax, col_full, params, calculate="average"):
         Full column name to extract from the report dictionary.
     params : dict
         Keyword arguments forwarded to ``Axes.plot``.
-    calculate : str, default "average"
-        Calculation to display in legend. Either "average" for mean value
-        or "difference" for (last - first) value.
+    plot_options : dict or None, optional
+        Additional plotting options. Supported keys:
+        - 'calculate' (str): Display statistic in legend, either "average"
+          (default) to show mean values, or "difference" to show the
+          difference between last and first values.
+        - 'swap_axes' (bool): If True, swap x and y axes (default False).
     """
+    plot_options = plot_options or {}
     names = np.array(report_dict.get("Name"), dtype=object)
     y_data = np.array(report_dict.get(col_full), dtype=object)
 
@@ -186,27 +237,29 @@ def plot_report_series(report_dict, ax, col_full, params, calculate="average"):
 
     # Plot each component
     for i in range(y_data.shape[0]):
-        y_vals = y_data[i]
         x_vals = np.arange(y_data.shape[1]) if y_data.ndim > 1 else np.arange(1)
 
         # Calculate statistic and format legend label
         stat_label, stat_value = _calculate_statistic(
-            [v for v in y_vals if isinstance(v, (int, float, np.floating))], calculate
+            [v for v in y_data[i] if isinstance(v, (int, float, np.floating))],
+            plot_options.get("calculate", "average"),
         )
-        legend_text = f"{_get_comp_label(names, i).ljust(max_len)} ({stat_label}={stat_value:7.2f})"
 
-        # Plot data
-        (line,) = ax.plot(x_vals, y_vals, label=legend_text, **params)
-
-        # Add horizontal average line if in average mode
-        if calculate == "average":
-            ax.plot(
-                x_vals,
-                [stat_value] * len(x_vals),
-                color=line.get_color(),
-                alpha=0.7,
-                linestyle=":",
-            )
+        # Plot the component series with average line
+        _plot_component_series(
+            ax,
+            {
+                "x_vals": x_vals,
+                "y_vals": y_data[i],
+                "legend_text": f"{_get_comp_label(names, i).ljust(max_len)} ({stat_label}={stat_value:7.2f})",
+            },
+            params,
+            {
+                "stat_value": stat_value,
+                "calculate": plot_options.get("calculate", "average"),
+                "swap_axes": plot_options.get("swap_axes", False),
+            },
+        )
 
 
 def plot_spectrum_series(spectrum_dict, ax, x_values, plot_options):
