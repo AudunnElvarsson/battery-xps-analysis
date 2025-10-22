@@ -79,9 +79,7 @@ def plot_report(
     # Get column name and set up plotting parameters
     fit_param = proc_kwargs.get("fit_param", "BE")
     col_full = get_column_name(fit_param)
-    plot_params = update_plot_params(
-        {"ls": "--", "lw": 1.5, "marker": "o"}, plot_kwargs
-    )
+    plot_params = update_plot_params({"ls": "--", "lw": 1.5, "m": "o"}, plot_kwargs)
 
     # Plot the data
     plot_report_series(report_dict, main_ax, col_full, plot_params)

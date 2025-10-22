@@ -59,6 +59,7 @@ def update_plot_params(defaults, user_kwargs):
         "ls": "linestyle",
         "lw": "linewidth",
         "c": "color",
+        "m": "marker",
         "mec": "markeredgecolor",
         "mew": "markeredgewidth",
         "mfc": "markerfacecolor",
