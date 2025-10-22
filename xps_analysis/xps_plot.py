@@ -51,6 +51,9 @@ def plot_report(
         Processing options for the plot. Supported keys:
         - 'fit_param' (str): Parameter to plot (default 'BE'). Common short
           forms: "BE", "Area", "At Conc", "Goodness".
+        - 'calculate' (str): Display statistic in legend, either "average"
+          (default) to show mean values, or "difference" to show the
+          difference between last and first values.
     plot_kwargs : dict or None, optional
         Keyword arguments forwarded to :meth:`matplotlib.axes.Axes.plot` for
         the component series (overrides module defaults).
@@ -78,17 +81,21 @@ def plot_report(
 
     # Get column name and set up plotting parameters
     fit_param = proc_kwargs.get("fit_param", "BE")
+    calculate = proc_kwargs.get("calculate", "average")
     col_full = get_column_name(fit_param)
     plot_params = update_plot_params({"ls": "--", "lw": 1.5, "m": "o"}, plot_kwargs)
 
     # Plot the data
-    plot_report_series(report_dict, main_ax, col_full, plot_params)
+    plot_report_series(report_dict, main_ax, col_full, plot_params, calculate)
 
     # Configure labels, title and legend
     main_ax.set_xlabel("Experimental Variable")
     main_ax.set_ylabel(col_full)
     main_ax.set_title(report_dict.get("Core Level") or "Unknown")
-    main_ax.legend()
+    legend = main_ax.legend()
+    # Use monospace font for aligned legend text
+    for text in legend.get_texts():
+        text.set_family("monospace")
 
     # Save figure if requested
     if save_kwargs.get("save_fig", False):
@@ -160,9 +167,11 @@ def plot_spectrum(
         spectrum_dict,
         ax,
         x_values,
-        x_axis,
-        plot_params,
-        proc_kwargs.get("normalised_residual", False),
+        {
+            "x_axis": x_axis,
+            "params": plot_params,
+            "normalised_residual": proc_kwargs.get("normalised_residual", False),
+        },
     )
 
     # Configure labels, title and legend

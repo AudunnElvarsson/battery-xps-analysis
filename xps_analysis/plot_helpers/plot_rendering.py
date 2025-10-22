@@ -109,12 +109,59 @@ def should_plot_key(key, x_axis, normalised_residual):
     return True
 
 
-def plot_report_series(report_dict, ax, col_full, params):
+def _get_component_label(names, index):
+    """Extract component label from names array at given index.
+
+    Parameters
+    ----------
+    names : np.ndarray
+        Array of component names.
+    index : int
+        Index of the component.
+
+    Returns
+    -------
+    str
+        Component label as string.
+    """
+    label = (
+        names[index][0]
+        if isinstance(names[index], (list, np.ndarray))
+        else names[index]
+    )
+    return str(label)
+
+
+def _calculate_statistic(numeric_vals, calculate):
+    """Calculate the statistic to display in legend.
+
+    Parameters
+    ----------
+    numeric_vals : list
+        List of numeric values from the data.
+    calculate : str
+        Calculation type: "average" or "difference".
+
+    Returns
+    -------
+    tuple
+        (stat_label, display_value) where stat_label is the label string
+        and display_value is the numeric value to display.
+    """
+    if calculate == "difference":
+        if len(numeric_vals) >= 2:
+            return "diff", numeric_vals[-1] - numeric_vals[0]
+        return "val", numeric_vals[0] if numeric_vals else 0
+    # calculate == "average"
+    return "avg", np.mean(numeric_vals) if numeric_vals else 0
+
+
+def plot_report_series(report_dict, ax, col_full, params, calculate="average"):
     """Plot rows from a fit report mapping onto an axis.
 
-    Each row in the report is plotted as a separate series and a horizontal
-    dashed line showing the row average is added (and included in the
-    legend).
+    Each row in the report is plotted as a separate series. A horizontal
+    dashed line and legend annotation show either the average or the
+    difference (last - first) depending on the ``calculate`` parameter.
 
     Parameters
     ----------
@@ -127,22 +174,42 @@ def plot_report_series(report_dict, ax, col_full, params):
         Full column name to extract from the report dictionary.
     params : dict
         Keyword arguments forwarded to ``Axes.plot``.
+    calculate : str, default "average"
+        Calculation to display in legend. Either "average" for mean value
+        or "difference" for (last - first) value.
     """
     names = np.array(report_dict.get("Name"), dtype=object)
     y_data = np.array(report_dict.get(col_full), dtype=object)
 
+    # Find maximum label length for alignment
+    max_len = max(len(_get_component_label(names, i)) for i in range(y_data.shape[0]))
+
+    # Plot each component
     for i in range(y_data.shape[0]):
-        y = y_data[i]
-        x = np.arange(y_data.shape[1]) if y_data.ndim > 1 else np.arange(1)
-        label = names[i][0] if isinstance(names[i], (list, np.ndarray)) else names[i]
-        avg = np.mean([v for v in y if isinstance(v, (int, float, np.floating))])
-        (line,) = ax.plot(x, y, label=f"{label} (avg={avg:.2f})", **params)
-        ax.plot(x, [avg] * len(x), color=line.get_color(), alpha=0.7, linestyle=":")
+        y_vals = y_data[i]
+        x_vals = np.arange(y_data.shape[1]) if y_data.ndim > 1 else np.arange(1)
+
+        # Calculate statistic and format legend label
+        stat_label, stat_value = _calculate_statistic(
+            [v for v in y_vals if isinstance(v, (int, float, np.floating))], calculate
+        )
+        legend_text = f"{_get_component_label(names, i).ljust(max_len)} ({stat_label}={stat_value:7.2f})"
+
+        # Plot data
+        (line,) = ax.plot(x_vals, y_vals, label=legend_text, **params)
+
+        # Add horizontal average line if in average mode
+        if calculate == "average":
+            ax.plot(
+                x_vals,
+                [stat_value] * len(x_vals),
+                color=line.get_color(),
+                alpha=0.7,
+                linestyle=":",
+            )
 
 
-def plot_spectrum_series(
-    spectrum_dict, ax, x, x_axis, params, normalised_residual=False
-):
+def plot_spectrum_series(spectrum_dict, ax, x_values, plot_options):
     """Plot all series contained in a spectrum mapping and return legend info.
 
     Parameters
@@ -153,14 +220,13 @@ def plot_spectrum_series(
     ax : Axes or sequence of Axes
         Axis or axes used for plotting. When a sequence is supplied residual
         series are plotted on the residual axis (index 0).
-    x : array-like or None
+    x_values : array-like or None
         Optional x-values to use for series that have matching length.
-    x_axis : str
-        Selected axis name (``'BE'`` or ``'KE'``).
-    params : dict
-        Plotting kwargs forwarded to ``Axes.plot``.
-    normalised_residual : bool, default False
-        Whether to plot normalised residuals instead of raw residuals.
+    plot_options : dict
+        Dictionary containing plotting options with keys:
+        - 'x_axis' (str): Selected axis name ('BE' or 'KE').
+        - 'params' (dict): Plotting kwargs forwarded to Axes.plot.
+        - 'normalised_residual' (bool): Whether to plot normalised residuals.
 
     Returns
     -------
@@ -168,6 +234,10 @@ def plot_spectrum_series(
         ``(handles, labels)`` where ``handles`` is a list of Line2D objects
         and ``labels`` is a list of corresponding legend labels.
     """
+    x_axis = plot_options["x_axis"]
+    params = plot_options["params"]
+    normalised_residual = plot_options.get("normalised_residual", False)
+
     handles = []
     labels = []
     for key, values in spectrum_dict.items():
@@ -175,10 +245,10 @@ def plot_spectrum_series(
             continue
         target_ax = select_target_axis(ax, key)
         try:
-            cond = x is not None and len(x) == len(values)
+            cond = x_values is not None and len(x_values) == len(values)
         except TypeError:
             cond = False
-        xs = x if cond else np.arange(len(values))
+        xs = x_values if cond else np.arange(len(values))
         try:
             (line,) = target_ax.plot(xs, values, label=key, **params)
         except (TypeError, ValueError):
