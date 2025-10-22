@@ -25,28 +25,14 @@ from .plot_helpers import (
 )
 
 
-def _derive_col_full(fit_param):
-    """Map short parameter names to full column headers."""
-    return {
-        "BE": "Binding Energy (eV)",
-        "Area": "Raw Area",
-        "At Conc": "%At Conc",
-        "Goodness": "Goodness of Fit",
-    }.get(fit_param, fit_param)
-
-
-def _save_if_requested(fig, save_fig, save_args, mapping):
-    """Save figure if requested by user."""
-    if save_fig:
-        save_figure(
-            fig,
-            name_list=[derive_file_name(mapping)],
-            save_args=save_args,
-            prefix="",
-        )
-
-
-def plot_report(report_dict, ax=None, save_fig=False, save_args=None, **kwargs):
+def plot_report(
+    report_dict,
+    ax=None,
+    processing_kwargs=None,
+    save_fig=False,
+    save_kwargs=None,
+    **kwargs,
+):
     """Plot a fit-report parameter across all components.
 
     The function plots one fitted parameter (for example binding energy or
@@ -61,15 +47,15 @@ def plot_report(report_dict, ax=None, save_fig=False, save_args=None, **kwargs):
         to contain a ``'Name'`` entry and the column named by ``fit_param``.
     ax : matplotlib.axes.Axes or None, optional
         Target axis to draw on. If ``None`` a new figure and axis are created.
+    processing_kwargs : dict or None, optional
+        Processing options for the plot. Supported keys:
+        - 'fit_param' (str): Parameter to plot (default 'BE'). Common short
+          forms: "BE", "Area", "At Conc", "Goodness".
     save_fig : bool, default False
-        If True the generated figure will be saved using ``save_args``.
-    save_args : dict or None, optional
+        If True the generated figure will be saved using ``save_kwargs``.
+    save_kwargs : dict or None, optional
         Options forwarded to the saving helper (may include ``save_folder``,
         ``format``, ``dpi``).
-    fit_param : str, optional
-        Short or full column name of the parameter to plot (default ``'BE'``).
-        Common short forms ("BE", "Area", "At Conc", "Goodness") are
-        mapped to full column headers internally.
     plot_kwargs : dict, optional
         Keyword arguments forwarded to :meth:`matplotlib.axes.Axes.plot` for
         the component series (overrides module defaults).
@@ -77,14 +63,12 @@ def plot_report(report_dict, ax=None, save_fig=False, save_args=None, **kwargs):
     Returns
     -------
     None
-
-    Notes
-    -----
-    This function uses a clean functional API without unnecessary class overhead.
     """
     # Extract parameters
-    fit_param = kwargs.pop("fit_param", "BE")
+    processing_kwargs = processing_kwargs or {}
     plot_kwargs = kwargs.pop("plot_kwargs", None)
+
+    fit_param = processing_kwargs.get("fit_param", "BE")
 
     # Set up plotting parameters
     params = update_plot_params(
@@ -98,8 +82,15 @@ def plot_report(report_dict, ax=None, save_fig=False, save_args=None, **kwargs):
     # Prepare axes
     fig, ax, main_ax, plot_here = ensure_axes_and_main(ax)
 
+    # Map short parameter names to full column headers
+    col_full = {
+        "BE": "Binding Energy (eV)",
+        "Area": "Raw Area",
+        "At Conc": "%At Conc",
+        "Goodness": "Goodness of Fit",
+    }.get(fit_param, fit_param)
+
     # Plot the data
-    col_full = _derive_col_full(fit_param)
     plot_report_series(report_dict, main_ax, col_full, params)
 
     # Configure axes and labels
@@ -112,14 +103,27 @@ def plot_report(report_dict, ax=None, save_fig=False, save_args=None, **kwargs):
 
     main_ax.legend()
 
-    # Save and display
-    _save_if_requested(fig, save_fig, save_args, report_dict)
+    # Save figure if requested
+    if save_fig:
+        save_figure(
+            fig,
+            name_list=[derive_file_name(report_dict)],
+            save_args=save_kwargs,
+            prefix="",
+        )
 
     if plot_here:
         plt.show()
 
 
-def plot_spectrum(spectrum_dict, ax=None, save_fig=False, save_args=None, **kwargs):
+def plot_spectrum(
+    spectrum_dict,
+    ax=None,
+    processing_kwargs=None,
+    save_fig=False,
+    save_kwargs=None,
+    **kwargs,
+):
     """Plot a spectrum and optional residuals from a spectrum dictionary.
 
     This function plots XPS spectrum data with optional residuals, automatically
@@ -133,31 +137,29 @@ def plot_spectrum(spectrum_dict, ax=None, save_fig=False, save_args=None, **kwar
         ``'KE'`` for x-values and other keys for data (components, residuals).
     ax : matplotlib.axes.Axes or sequence of Axes, optional
         Target axis or axes. If ``None``, a new figure/axes pair is created.
+    processing_kwargs : dict or None, optional
+        Processing options for the plot. Supported keys:
+        - 'x_axis' (str): Which x-axis to use, 'BE' or 'KE' (default 'BE').
+        - 'normalised_residual' (bool): Whether to plot normalised residual
+          instead of raw residual (default False).
     save_fig : bool, default False
-        If True the generated figure will be saved using ``save_args``.
-    save_args : dict, optional
+        If True the generated figure will be saved using ``save_kwargs``.
+    save_kwargs : dict, optional
         Save options passed to :func:`save_figure` (e.g. ``save_folder``,
         ``format``, ``dpi``).
-    x_axis : {'BE', 'KE'}, default 'BE'
-        Which x-axis data to use when plotting.
-    normalised_residual : bool, default False
-        Whether to plot the normalised residual series instead of raw residual.
     plot_kwargs : dict, optional
         Keyword arguments forwarded to ``Axes.plot`` for data series.
 
     Returns
     -------
     None
-
-    Notes
-    -----
-    This function provides a clean functional interface for spectrum plotting
-    without the complexity of class-based state management.
     """
     # Extract parameters
-    x_axis = kwargs.pop("x_axis", "BE")
-    normalised_residual = kwargs.pop("normalised_residual", False)
+    processing_kwargs = processing_kwargs or {}
     plot_kwargs = kwargs.pop("plot_kwargs", None)
+
+    x_axis = processing_kwargs.get("x_axis", "BE")
+    normalised_residual = processing_kwargs.get("normalised_residual", False)
 
     # Set up plotting parameters
     params = update_plot_params({"linestyle": "-", "linewidth": 1.5}, plot_kwargs)
@@ -196,8 +198,14 @@ def plot_spectrum(spectrum_dict, ax=None, save_fig=False, save_args=None, **kwar
     # Configure axis inversion and residual formatting
     configure_axes(ax, main_ax, invert=invert)
 
-    # Save and display
-    _save_if_requested(fig, save_fig, save_args, spectrum_dict)
+    # Save figure if requested
+    if save_fig:
+        save_figure(
+            fig,
+            name_list=[derive_file_name(spectrum_dict)],
+            save_args=save_kwargs,
+            prefix="",
+        )
 
     if plot_here:
         plt.show()

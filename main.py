@@ -15,26 +15,29 @@ def convert_all_vms(project_folder):
     xu.convert_all_vms_in_project(project_folder)
 
 
-def report_parameters(report_dict, save_fig=False, save_args=None):
+def report_parameters(report_dict, save_fig=False, save_kwargs=None):
     """
     Plot the composition report from the specified file path and save figure.
     """
     xp.print_report_averages(report_dict)
 
-    custom_kwargs = {"linestyle": "-"}
+    processing_args = {"fit_param": "BE"}
+    plot_args = {"linestyle": "-"}
+
     fig, axes = plt.subplots(figsize=(8, 6))
     fig.set_tight_layout(True)
+
     xplot.plot_report(
         report_dict,
         ax=axes,
-        fit_param="BE",
-        plot_kwargs=custom_kwargs,
+        processing_kwargs=processing_args,
+        plot_kwargs=plot_args,
         save_fig=save_fig,
-        save_args=save_args,
+        save_kwargs=save_kwargs,
     )
 
 
-def spectrum_parameters(spectrum_dict, save_fig=False, save_args=None):
+def spectrum_parameters(spectrum_dict, save_fig=False, save_kwargs=None):
     """
     Plot the spectrum from the specified dictionary and save figure.
     """
@@ -54,7 +57,7 @@ def spectrum_parameters(spectrum_dict, save_fig=False, save_args=None):
         normalised_residual=False,
         plot_kwargs=custom_kwargs,
         save_fig=save_fig,
-        save_args=save_args,
+        save_kwargs=save_kwargs,
     )
 
 
@@ -68,7 +71,7 @@ def main():
     )
     experiment_folder = r"250221_Gr_XPS_beam_damage_and_neutralizers/3_output/"
     save_folder = project_folder + experiment_folder
-    report_file = save_folder + r"2_beam_damage_unwashed_report_C1s.txt"
+    report_file = save_folder + r"5_e_beam_unwashed_before_after_report_C1s.txt"
     spectrum_file = save_folder + r"2_beam_damage_unwashed_spectrum_C1s.txt"
 
     # Flags to control execution
@@ -83,11 +86,11 @@ def main():
 
     if run_plot_report:
         report_dict = xp.read_report_file(report_file)
-        report_parameters(report_dict, save_fig=save_figures, save_args=save_args)
+        report_parameters(report_dict, save_fig=save_figures, save_kwargs=save_args)
 
     if run_plot_spectrum:
         spectrum_dict = xp.read_spectrum_file(spectrum_file)
-        spectrum_parameters(spectrum_dict, save_fig=save_figures, save_args=save_args)
+        spectrum_parameters(spectrum_dict, save_fig=save_figures, save_kwargs=save_args)
 
     plt.show()
 
