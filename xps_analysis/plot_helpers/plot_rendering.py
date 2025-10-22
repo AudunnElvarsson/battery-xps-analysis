@@ -109,7 +109,7 @@ def should_plot_key(key, x_axis, normalised_residual):
     return True
 
 
-def _get_component_label(names, index):
+def _get_comp_label(names, index):
     """Extract component label from names array at given index.
 
     Parameters
@@ -182,7 +182,7 @@ def plot_report_series(report_dict, ax, col_full, params, calculate="average"):
     y_data = np.array(report_dict.get(col_full), dtype=object)
 
     # Find maximum label length for alignment
-    max_len = max(len(_get_component_label(names, i)) for i in range(y_data.shape[0]))
+    max_len = max(len(_get_comp_label(names, i)) for i in range(y_data.shape[0]))
 
     # Plot each component
     for i in range(y_data.shape[0]):
@@ -193,7 +193,7 @@ def plot_report_series(report_dict, ax, col_full, params, calculate="average"):
         stat_label, stat_value = _calculate_statistic(
             [v for v in y_vals if isinstance(v, (int, float, np.floating))], calculate
         )
-        legend_text = f"{_get_component_label(names, i).ljust(max_len)} ({stat_label}={stat_value:7.2f})"
+        legend_text = f"{_get_comp_label(names, i).ljust(max_len)} ({stat_label}={stat_value:7.2f})"
 
         # Plot data
         (line,) = ax.plot(x_vals, y_vals, label=legend_text, **params)
