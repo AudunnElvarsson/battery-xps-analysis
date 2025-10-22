@@ -10,6 +10,7 @@ from .axis_management import (
     configure_axes,
 )
 from .plot_rendering import (
+    get_column_name,
     update_plot_params,
     should_plot_key,
     plot_report_series,
@@ -27,6 +28,7 @@ __all__ = [
     "ensure_axes_and_main",
     "configure_axes",
     # Plot rendering
+    "get_column_name",
     "update_plot_params",
     "should_plot_key",
     "plot_report_series",

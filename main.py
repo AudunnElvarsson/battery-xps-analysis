@@ -15,13 +15,13 @@ def convert_all_vms(project_folder):
     xu.convert_all_vms_in_project(project_folder)
 
 
-def report_parameters(report_dict, save_fig=False, save_kwargs=None):
+def report_parameters(report_dict, save_args=None):
     """
     Plot the composition report from the specified file path and save figure.
     """
     xp.print_report_averages(report_dict)
 
-    processing_args = {"fit_param": "BE"}
+    proc_args = {"fit_param": "BE"}
     plot_args = {"linestyle": "-"}
 
     fig, axes = plt.subplots(figsize=(8, 6))
@@ -30,18 +30,18 @@ def report_parameters(report_dict, save_fig=False, save_kwargs=None):
     xplot.plot_report(
         report_dict,
         ax=axes,
-        processing_kwargs=processing_args,
+        proc_kwargs=proc_args,
         plot_kwargs=plot_args,
-        save_fig=save_fig,
-        save_kwargs=save_kwargs,
+        save_kwargs=save_args,
     )
 
 
-def spectrum_parameters(spectrum_dict, save_fig=False, save_kwargs=None):
+def spectrum_parameters(spectrum_dict, save_args=None):
     """
     Plot the spectrum from the specified dictionary and save figure.
     """
-    custom_kwargs = {"linestyle": "-"}
+    proc_args = {"x_axis": "BE", "normalised_residual": False}
+    plot_args = {"linestyle": "-"}
 
     fig, axes = plt.subplots(
         2,
@@ -50,14 +50,13 @@ def spectrum_parameters(spectrum_dict, save_fig=False, save_kwargs=None):
         gridspec_kw={"height_ratios": [1, 8], "hspace": 0},
     )
     fig.set_tight_layout(True)
+
     xplot.plot_spectrum(
         spectrum_dict,
         ax=axes,
-        x_axis="BE",
-        normalised_residual=False,
-        plot_kwargs=custom_kwargs,
-        save_fig=save_fig,
-        save_kwargs=save_kwargs,
+        proc_kwargs=proc_args,
+        plot_kwargs=plot_args,
+        save_kwargs=save_args,
     )
 
 
@@ -78,19 +77,18 @@ def main():
     run_convert_all_vms_in_project = False
     run_plot_report = True
     run_plot_spectrum = True
-    save_figures = False
-    save_args = {"format": "png", "save_folder": save_folder}
+    save_args = {"save_fig": False, "format": "png", "save_folder": save_folder}
 
     if run_convert_all_vms_in_project:
         convert_all_vms(project_folder)
 
     if run_plot_report:
         report_dict = xp.read_report_file(report_file)
-        report_parameters(report_dict, save_fig=save_figures, save_kwargs=save_args)
+        report_parameters(report_dict, save_args=save_args)
 
     if run_plot_spectrum:
         spectrum_dict = xp.read_spectrum_file(spectrum_file)
-        spectrum_parameters(spectrum_dict, save_fig=save_figures, save_kwargs=save_args)
+        spectrum_parameters(spectrum_dict, save_args=save_args)
 
     plt.show()
 

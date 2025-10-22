@@ -8,8 +8,38 @@ import numpy as np
 from .axis_management import select_target_axis
 
 
+def get_column_name(fit_param):
+    """Map short parameter names to full column headers.
+
+    This function provides convenient shortcuts for common fit parameters
+    while also allowing custom parameter names to pass through unchanged.
+
+    Parameters
+    ----------
+    fit_param : str
+        Parameter name, either short form (e.g., 'BE', 'Area') or full
+        column header.
+
+    Returns
+    -------
+    str
+        Full column header name. If the input is a recognized short form,
+        returns the mapped full name; otherwise returns the input unchanged.
+    """
+    param_mapping = {
+        "BE": "Binding Energy (eV)",
+        "Area": "Raw Area",
+        "At Conc": "%At Conc",
+        "Goodness": "Goodness of Fit",
+    }
+    return param_mapping.get(fit_param, fit_param)
+
+
 def update_plot_params(defaults, user_kwargs):
     """Merge default plotting parameters with user-supplied overrides.
+
+    This function accepts both full and abbreviated matplotlib parameter names
+    and normalizes them to full names to avoid conflicts (e.g., 'ls' → 'linestyle').
 
     Parameters
     ----------
@@ -21,11 +51,32 @@ def update_plot_params(defaults, user_kwargs):
     Returns
     -------
     dict
-        A new dictionary containing the merged plotting parameters.
+        A new dictionary containing the merged plotting parameters with
+        normalized (full) parameter names.
     """
-    params = defaults.copy()
+    # Mapping of abbreviated to full parameter names
+    param_aliases = {
+        "ls": "linestyle",
+        "lw": "linewidth",
+        "c": "color",
+        "mec": "markeredgecolor",
+        "mew": "markeredgewidth",
+        "mfc": "markerfacecolor",
+        "ms": "markersize",
+    }
+
+    # Normalize defaults by replacing abbreviated names with full names
+    params = {}
+    for key, value in defaults.items():
+        full_key = param_aliases.get(key, key)
+        params[full_key] = value
+
     if user_kwargs:
-        params.update(user_kwargs)
+        # Normalize user_kwargs by replacing abbreviated names with full names
+        for key, value in user_kwargs.items():
+            full_key = param_aliases.get(key, key)
+            params[full_key] = value
+
     return params
 
 
@@ -88,7 +139,9 @@ def plot_report_series(report_dict, ax, col_full, params):
         ax.plot(x, [avg] * len(x), color=line.get_color(), alpha=0.7, linestyle=":")
 
 
-def plot_spectrum_series(spectrum_dict, ax, x, opts):
+def plot_spectrum_series(
+    spectrum_dict, ax, x, x_axis, params, normalised_residual=False
+):
     """Plot all series contained in a spectrum mapping and return legend info.
 
     Parameters
@@ -101,12 +154,12 @@ def plot_spectrum_series(spectrum_dict, ax, x, opts):
         series are plotted on the residual axis (index 0).
     x : array-like or None
         Optional x-values to use for series that have matching length.
-    opts : dict
-        Options dictionary containing:
-        - ``x_axis`` (str): selected axis name (``'BE'`` or ``'KE'``)
-        - ``params`` (dict): plotting kwargs forwarded to ``Axes.plot``
-        - ``normalised_residual`` (bool): whether to plot normalised
-          residuals instead of raw residuals.
+    x_axis : str
+        Selected axis name (``'BE'`` or ``'KE'``).
+    params : dict
+        Plotting kwargs forwarded to ``Axes.plot``.
+    normalised_residual : bool, default False
+        Whether to plot normalised residuals instead of raw residuals.
 
     Returns
     -------
@@ -114,10 +167,6 @@ def plot_spectrum_series(spectrum_dict, ax, x, opts):
         ``(handles, labels)`` where ``handles`` is a list of Line2D objects
         and ``labels`` is a list of corresponding legend labels.
     """
-    x_axis = opts.get("x_axis")
-    params = opts.get("params") or {}
-    normalised_residual = opts.get("normalised_residual", False)
-
     handles = []
     labels = []
     for key, values in spectrum_dict.items():

@@ -19,6 +19,7 @@ from .plot_helpers import (
     get_x_axis_from_dict,
     ensure_axes_and_main,
     configure_axes,
+    get_column_name,
     update_plot_params,
     plot_report_series,
     plot_spectrum_series,
@@ -28,10 +29,9 @@ from .plot_helpers import (
 def plot_report(
     report_dict,
     ax=None,
-    processing_kwargs=None,
-    save_fig=False,
+    proc_kwargs=None,
+    plot_kwargs=None,
     save_kwargs=None,
-    **kwargs,
 ):
     """Plot a fit-report parameter across all components.
 
@@ -47,33 +47,27 @@ def plot_report(
         to contain a ``'Name'`` entry and the column named by ``fit_param``.
     ax : matplotlib.axes.Axes or None, optional
         Target axis to draw on. If ``None`` a new figure and axis are created.
-    processing_kwargs : dict or None, optional
+    proc_kwargs : dict or None, optional
         Processing options for the plot. Supported keys:
         - 'fit_param' (str): Parameter to plot (default 'BE'). Common short
           forms: "BE", "Area", "At Conc", "Goodness".
-    save_fig : bool, default False
-        If True the generated figure will be saved using ``save_kwargs``.
-    save_kwargs : dict or None, optional
-        Options forwarded to the saving helper (may include ``save_folder``,
-        ``format``, ``dpi``).
-    plot_kwargs : dict, optional
+    plot_kwargs : dict or None, optional
         Keyword arguments forwarded to :meth:`matplotlib.axes.Axes.plot` for
         the component series (overrides module defaults).
+    save_kwargs : dict or None, optional
+        Options forwarded to the saving helper. Supported keys:
+        - 'save_fig' (bool): Whether to save the figure (default False).
+        - 'save_folder' (str): Directory path for saving.
+        - 'format' (str): File format (e.g., 'png', 'pdf').
+        - 'dpi' (int): Resolution for raster formats.
 
     Returns
     -------
     None
     """
     # Extract parameters
-    processing_kwargs = processing_kwargs or {}
-    plot_kwargs = kwargs.pop("plot_kwargs", None)
-
-    fit_param = processing_kwargs.get("fit_param", "BE")
-
-    # Set up plotting parameters
-    params = update_plot_params(
-        {"linestyle": "--", "linewidth": 1.5, "marker": "o"}, plot_kwargs
-    )
+    proc_kwargs = proc_kwargs or {}
+    save_kwargs = save_kwargs or {}
 
     if report_dict is None:
         print("No data to plot.")
@@ -82,29 +76,24 @@ def plot_report(
     # Prepare axes
     fig, ax, main_ax, plot_here = ensure_axes_and_main(ax)
 
-    # Map short parameter names to full column headers
-    col_full = {
-        "BE": "Binding Energy (eV)",
-        "Area": "Raw Area",
-        "At Conc": "%At Conc",
-        "Goodness": "Goodness of Fit",
-    }.get(fit_param, fit_param)
+    # Get column name and set up plotting parameters
+    fit_param = proc_kwargs.get("fit_param", "BE")
+    col_full = get_column_name(fit_param)
+    plot_params = update_plot_params(
+        {"ls": "--", "lw": 1.5, "marker": "o"}, plot_kwargs
+    )
 
     # Plot the data
-    plot_report_series(report_dict, main_ax, col_full, params)
+    plot_report_series(report_dict, main_ax, col_full, plot_params)
 
-    # Configure axes and labels
+    # Configure labels, title and legend
     main_ax.set_xlabel("Experimental Variable")
     main_ax.set_ylabel(col_full)
-
-    # Add core level as the title
-    core_level = report_dict.get("Core Level") or "Unknown"
-    main_ax.set_title(core_level)
-
+    main_ax.set_title(report_dict.get("Core Level") or "Unknown")
     main_ax.legend()
 
     # Save figure if requested
-    if save_fig:
+    if save_kwargs.get("save_fig", False):
         save_figure(
             fig,
             name_list=[derive_file_name(report_dict)],
@@ -119,10 +108,9 @@ def plot_report(
 def plot_spectrum(
     spectrum_dict,
     ax=None,
-    processing_kwargs=None,
-    save_fig=False,
+    proc_kwargs=None,
+    plot_kwargs=None,
     save_kwargs=None,
-    **kwargs,
 ):
     """Plot a spectrum and optional residuals from a spectrum dictionary.
 
@@ -137,32 +125,28 @@ def plot_spectrum(
         ``'KE'`` for x-values and other keys for data (components, residuals).
     ax : matplotlib.axes.Axes or sequence of Axes, optional
         Target axis or axes. If ``None``, a new figure/axes pair is created.
-    processing_kwargs : dict or None, optional
+    proc_kwargs : dict or None, optional
         Processing options for the plot. Supported keys:
         - 'x_axis' (str): Which x-axis to use, 'BE' or 'KE' (default 'BE').
         - 'normalised_residual' (bool): Whether to plot normalised residual
           instead of raw residual (default False).
-    save_fig : bool, default False
-        If True the generated figure will be saved using ``save_kwargs``.
-    save_kwargs : dict, optional
-        Save options passed to :func:`save_figure` (e.g. ``save_folder``,
-        ``format``, ``dpi``).
-    plot_kwargs : dict, optional
+    plot_kwargs : dict or None, optional
         Keyword arguments forwarded to ``Axes.plot`` for data series.
+    save_kwargs : dict or None, optional
+        Options forwarded to the saving helper. Supported keys:
+        - 'save_fig' (bool): Whether to save the figure (default False).
+        - 'save_folder' (str): Directory path for saving.
+        - 'format' (str): File format (e.g., 'png', 'pdf').
+        - 'dpi' (int): Resolution for raster formats.
 
     Returns
     -------
     None
     """
     # Extract parameters
-    processing_kwargs = processing_kwargs or {}
-    plot_kwargs = kwargs.pop("plot_kwargs", None)
-
-    x_axis = processing_kwargs.get("x_axis", "BE")
-    normalised_residual = processing_kwargs.get("normalised_residual", False)
-
-    # Set up plotting parameters
-    params = update_plot_params({"linestyle": "-", "linewidth": 1.5}, plot_kwargs)
+    proc_kwargs = proc_kwargs or {}
+    save_kwargs = save_kwargs or {}
+    x_axis = proc_kwargs.get("x_axis", "BE")
 
     if spectrum_dict is None:
         print("No data to plot.")
@@ -173,25 +157,20 @@ def plot_spectrum(
 
     # Get x-axis info and plot data
     x_values, x_label, invert = get_x_axis_from_dict(spectrum_dict, x_axis)
+    plot_params = update_plot_params({"ls": "-", "lw": 1.5}, plot_kwargs)
     handles, labels = plot_spectrum_series(
         spectrum_dict,
         ax,
         x_values,
-        {
-            "x_axis": x_axis,
-            "params": params,
-            "normalised_residual": normalised_residual,
-        },
+        x_axis,
+        plot_params,
+        proc_kwargs.get("normalised_residual", False),
     )
 
-    # Configure axes and labels
+    # Configure labels, title and legend
     main_ax.set_xlabel(x_label)
     main_ax.set_ylabel("Intensity (a.u.)")
-
-    # Add core level as the title
-    core_level = spectrum_dict.get("Core Level") or "Unknown"
-    fig.suptitle(core_level)
-
+    fig.suptitle(spectrum_dict.get("Core Level") or "Unknown")
     if handles:
         main_ax.legend(handles, labels)
 
@@ -199,7 +178,7 @@ def plot_spectrum(
     configure_axes(ax, main_ax, invert=invert)
 
     # Save figure if requested
-    if save_fig:
+    if save_kwargs.get("save_fig", False):
         save_figure(
             fig,
             name_list=[derive_file_name(spectrum_dict)],
