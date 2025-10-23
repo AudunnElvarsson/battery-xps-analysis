@@ -23,6 +23,7 @@ from .plot_helpers import (
     update_plot_params,
     plot_report_series,
     plot_spectrum_series,
+    convert_to_relative_be,
 )
 
 
@@ -54,6 +55,11 @@ def plot_report(
         - 'calculate' (str): Display statistic in legend, either "average"
           (default) to show mean values, or "difference" to show the
           difference between last and first values.
+        - 'reference' (str): Component label to use as reference for relative
+          binding energy plotting (e.g., "A", "C"). Only applies when
+          fit_param='BE'. If provided, plots relative BE with respect to the
+          first value of the reference component. If not provided, plots
+          absolute binding energies (default behavior).
     plot_kwargs : dict or None, optional
         Keyword arguments forwarded to :meth:`matplotlib.axes.Axes.plot` for
         the component series (overrides module defaults).
@@ -68,7 +74,6 @@ def plot_report(
     -------
     None
     """
-    # Extract parameters
     proc_kwargs = proc_kwargs or {}
     save_kwargs = save_kwargs or {}
 
@@ -76,42 +81,34 @@ def plot_report(
         print("No data to plot.")
         return
 
-    # Prepare axes
     fig, ax, main_ax, plot_here = ensure_axes_and_main(ax)
 
-    # Get column name and set up plotting parameters
-    fit_param = proc_kwargs.get("fit_param", "BE")
-    calculate = proc_kwargs.get("calculate", "average")
-    col_full = get_column_name(fit_param)
-    plot_params = update_plot_params({"ls": "--", "lw": 1.5, "m": "o"}, plot_kwargs)
+    # Get column name and convert to relative BE if needed
+    col_full = get_column_name(proc_kwargs.get("fit_param", "BE"))
+    reference = proc_kwargs.get("reference", None)
+    plot_dict = report_dict
 
-    # Determine if axes should be swapped (for binding energy)
-    swap_axes = "Binding Energy" in col_full
+    if reference and "Binding Energy" in col_full:
+        plot_dict = convert_to_relative_be(report_dict, col_full, reference)
+        if plot_dict is not report_dict:
+            col_full = "Relative Binding Energy (eV)"
 
     # Plot the data
     plot_report_series(
-        report_dict,
+        plot_dict,
         main_ax,
         col_full,
-        plot_params,
-        {"calculate": calculate, "swap_axes": swap_axes},
+        update_plot_params({"ls": "--", "lw": 1.5, "m": "o"}, plot_kwargs),
+        {
+            "calculate": proc_kwargs.get("calculate", "average"),
+            "swap_axes": "Binding Energy" in col_full,
+        },
     )
 
-    # Configure labels, title and legend (swap labels if axes are swapped)
-    if swap_axes:
-        main_ax.set_xlabel(col_full)
-        main_ax.set_ylabel("Experimental Variable")
-        # Invert both axes for binding energy
-        main_ax.invert_xaxis()
-        main_ax.invert_yaxis()
-    else:
-        main_ax.set_xlabel("Experimental Variable")
-        main_ax.set_ylabel(col_full)
-    main_ax.set_title(report_dict.get("Core Level") or "Unknown")
-    legend = main_ax.legend()
-    # Use monospace font for aligned legend text
-    for text in legend.get_texts():
-        text.set_family("monospace")
+    # Configure axes and legend
+    _configure_report_axes(
+        main_ax, col_full, report_dict.get("Core Level") or "Unknown"
+    )
 
     # Save figure if requested
     if save_kwargs.get("save_fig", False):
@@ -124,6 +121,35 @@ def plot_report(
 
     if plot_here:
         plt.show()
+
+
+def _configure_report_axes(ax, col_full, core_level):
+    """Configure axis labels, title, and legend for report plot.
+
+    Parameters
+    ----------
+    ax : Axes
+        Target axis to configure.
+    col_full : str
+        Full column name being plotted.
+    core_level : str
+        Core level name for title.
+    """
+    swap_axes = "Binding Energy" in col_full
+
+    if swap_axes:
+        ax.set_xlabel(col_full)
+        ax.set_ylabel("Experimental Variable")
+        ax.invert_xaxis()
+        ax.invert_yaxis()
+    else:
+        ax.set_xlabel("Experimental Variable")
+        ax.set_ylabel(col_full)
+
+    ax.set_title(core_level)
+    legend = ax.legend()
+    for text in legend.get_texts():
+        text.set_family("monospace")
 
 
 def plot_spectrum(

@@ -19,9 +19,7 @@ def report_parameters(report_dict, save_param=None):
     """
     Plot the composition report from the specified file path and save figure.
     """
-    xp.print_report_averages(report_dict)
-
-    proc_param = {"fit_param": "BE", "calculate": "difference"}
+    proc_param = {"fit_param": "BE", "calculate": "difference", "reference": ""}
     plot_param = {"linestyle": "-"}
 
     fig, axes = plt.subplots(figsize=(8, 6))
@@ -75,16 +73,22 @@ def main():
 
     # Flags to control execution
     run_convert_all_vms_in_project = False
+    run_print_report = True
     run_plot_report = True
-    run_plot_spectrum = True
+    run_plot_spectrum = False
     save_param = {"save_fig": False, "format": "png", "save_folder": save_folder}
 
     if run_convert_all_vms_in_project:
         convert_all_vms(project_folder)
 
-    if run_plot_report:
+    if run_print_report or run_plot_report:
         report_dict = xp.read_report_file(report_file)
-        report_parameters(report_dict, save_param=save_param)
+
+        if run_print_report:
+            xp.print_report_averages(report_dict, reference="A")
+
+        if run_plot_report:
+            report_parameters(report_dict, save_param=save_param)
 
     if run_plot_spectrum:
         spectrum_dict = xp.read_spectrum_file(spectrum_file)

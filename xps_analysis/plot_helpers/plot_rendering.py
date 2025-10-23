@@ -8,6 +8,122 @@ import numpy as np
 from .axis_management import select_target_axis
 
 
+def _find_reference_index(labels, reference):
+    """Find the index of the reference component by label.
+
+    Parameters
+    ----------
+    labels : np.ndarray
+        Array of component labels.
+    reference : str
+        Reference component label to find.
+
+    Returns
+    -------
+    int or None
+        Index of reference component, or None if not found.
+    """
+    for i in range(labels.shape[0]):
+        label = labels[i, 0] if labels.ndim > 1 else labels[i]
+        if str(label) == reference:
+            return i
+    return None
+
+
+def _get_reference_be(be_data, ref_idx):
+    """Extract reference BE value from data array.
+
+    Parameters
+    ----------
+    be_data : np.ndarray
+        Binding energy data array.
+    ref_idx : int
+        Index of reference component.
+
+    Returns
+    -------
+    float or None
+        Reference BE value, or None if not numeric.
+    """
+    ref_be = be_data[ref_idx, 0] if be_data.ndim > 1 else be_data[ref_idx]
+    if isinstance(ref_be, (int, float, np.integer, np.floating)):
+        return float(ref_be)
+    return None
+
+
+def _convert_be_array(be_data, ref_be):
+    """Convert BE array to relative values.
+
+    Parameters
+    ----------
+    be_data : np.ndarray
+        Original binding energy data.
+    ref_be : float
+        Reference BE value to subtract.
+
+    Returns
+    -------
+    np.ndarray
+        Array with relative BE values.
+    """
+    rel_be_data = np.array(be_data, dtype=object)
+    for i in range(rel_be_data.shape[0]):
+        if rel_be_data.ndim > 1:
+            for j in range(rel_be_data.shape[1]):
+                if isinstance(rel_be_data[i, j], (int, float, np.integer, np.floating)):
+                    rel_be_data[i, j] = float(rel_be_data[i, j]) - ref_be
+        else:
+            if isinstance(rel_be_data[i], (int, float, np.integer, np.floating)):
+                rel_be_data[i] = float(rel_be_data[i]) - ref_be
+    return rel_be_data
+
+
+def convert_to_relative_be(report_dict, col_full, reference):
+    """Convert binding energy values to relative values with respect to a reference.
+
+    Parameters
+    ----------
+    report_dict : dict
+        Report dictionary containing BE data and component labels.
+    col_full : str
+        Full column name for binding energy (e.g., "Binding Energy (eV)").
+    reference : str
+        Component label to use as reference.
+
+    Returns
+    -------
+    dict
+        New dictionary with relative BE values, or original dict if conversion fails.
+    """
+    if col_full not in report_dict or "Comp Label" not in report_dict:
+        return report_dict
+
+    labels = report_dict.get("Comp Label")
+    be_data = report_dict.get(col_full)
+
+    if labels is None or be_data is None:
+        return report_dict
+
+    # Find reference component index
+    ref_idx = _find_reference_index(labels, reference)
+    if ref_idx is None:
+        print(
+            f"Warning: Reference component '{reference}' not found. Using absolute BE."
+        )
+        return report_dict
+
+    # Get reference BE value
+    ref_be = _get_reference_be(be_data, ref_idx)
+    if ref_be is None:
+        print("Warning: Reference BE is not numeric. Using absolute BE.")
+        return report_dict
+
+    # Create new dict with relative BE
+    new_dict = report_dict.copy()
+    new_dict["Relative Binding Energy (eV)"] = _convert_be_array(be_data, ref_be)
+    return new_dict
+
+
 def get_column_name(fit_param):
     """Map short parameter names to full column headers.
 

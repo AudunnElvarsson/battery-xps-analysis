@@ -156,7 +156,7 @@ def read_spectrum_file(file_path):
     return renamed_dict
 
 
-def print_report_averages(fit_data):
+def print_report_averages(fit_data, reference="A"):
     """Print a table with average values for numeric entries in fit report data.
 
     This function calculates and displays averages for all numeric entries
@@ -171,6 +171,10 @@ def print_report_averages(fit_data):
     fit_data : dict
         Dictionary returned by ``read_report_file`` containing 2D NumPy
         arrays with fit parameters.
+    reference : str, optional
+        Label of the component to use as reference for relative binding energy
+        calculation (default "A"). The relative BE column shows the difference
+        in binding energy with respect to this reference component.
     """
     # Validate input data
     if not fit_data:
@@ -191,6 +195,31 @@ def print_report_averages(fit_data):
         fit_data, component_names
     )
 
+    # Calculate relative binding energies if BE data is available
+    if "BE" in numeric_params:
+        # Find reference component
+        reference_comp = None
+        for comp_name in component_names:
+            if component_data[comp_name].get("Label") == reference:
+                reference_comp = comp_name
+                break
+
+        if reference_comp and "BE" in component_data[reference_comp]:
+            reference_be = component_data[reference_comp]["BE"]
+            # Add relative BE for all components
+            for comp_name in component_names:
+                if "BE" in component_data[comp_name]:
+                    component_data[comp_name]["Rel. BE"] = (
+                        component_data[comp_name]["BE"] - reference_be
+                    )
+            # Insert "Rel. BE" after "BE" in the numeric_params list
+            be_idx = numeric_params.index("BE")
+            numeric_params.insert(be_idx + 1, "Rel. BE")
+        else:
+            print(
+                f"Warning: Reference component '{reference}' not found or has no BE data."
+            )
+
     all_parameters = numeric_params + string_params
     if not all_parameters:
         print("No parameters found to display.")
@@ -204,11 +233,17 @@ def print_report_averages(fit_data):
 
     # Print table
     core_level = fit_data.get("Core Level") or "Unknown"
-    title = f"Average values from fit report (by component) - {core_level}"
+    file_name = f"File: {fit_data.get("File Name", "Unknown file")}"
+    title = f"Average values from fit report - {core_level}"
     print(
         f"{'═' * int(np.floor((len(header) - len(title)) / 2 - 1))}",
         title,
-        f"{'═' * int(np.ceil((len(header) - len(title)) / 2 - 1))}\n",
+        f"{'═' * int(np.ceil((len(header) - len(title)) / 2 - 1))}",
+    )
+    print(
+        f"{'═' * int(np.floor((len(header) - len(file_name)) / 2 - 1))}",
+        file_name,
+        f"{'═' * int(np.ceil((len(header) - len(file_name)) / 2 - 1))}\n",
     )
     print(header)
     print(separator)
