@@ -1,8 +1,14 @@
-"""
-XPS file parsing utilities.
+"""XPS file parsing utilities.
 
 This module contains low-level functions for parsing XPS data files,
 including header detection, data row parsing, and type conversion.
+
+Public Functions
+----------------
+find_header : Find and return the first header line matching criteria
+parse_data_rows : Parse tab-separated rows following a header
+convert_data_types : Convert data columns to appropriate numpy dtypes
+add_file_metadata : Add file path and core level metadata to data dict
 """
 
 import os

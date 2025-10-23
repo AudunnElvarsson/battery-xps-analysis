@@ -1,37 +1,16 @@
-"""
-XPS data analysis utilities.
+"""XPS data analysis utilities.
 
 This module contains functions for analyzing XPS fit data,
 including numeric value extraction and parameter processing.
+
+Public Functions
+----------------
+process_parameter : Process a single parameter and update component data
+extract_component_names : Extract component names from fit data
+process_all_parameters : Process all parameters and organize by component
 """
 
 import numpy as np
-
-
-def _extract_numeric_values(comp_row):
-    """Extract all numeric values from a component row, handling lists and scalars."""
-    numeric_values = []
-    for value in comp_row:
-        if isinstance(value, (int, float, np.integer, np.floating)) and not np.isnan(
-            value
-        ):
-            numeric_values.append(float(value))
-        elif isinstance(value, list):
-            numeric_values.extend(
-                float(item)
-                for item in value
-                if isinstance(item, (int, float, np.integer, np.floating))
-                and not np.isnan(item)
-            )
-    return numeric_values
-
-
-def _is_numeric_array(data_array):
-    """Check if array contains numeric data."""
-    if data_array.dtype != object:
-        return True
-    first_elem = data_array.flat[0] if data_array.size > 0 else None
-    return isinstance(first_elem, (int, float, np.integer, np.floating))
 
 
 def process_parameter(key, data_array, component_names, component_data):
@@ -117,3 +96,29 @@ def process_all_parameters(fit_data, component_names):
         (numeric_parameters if is_numeric else string_parameters).append(display_key)
 
     return numeric_parameters, string_parameters, component_data
+
+
+def _extract_numeric_values(comp_row):
+    """Extract all numeric values from a component row, handling lists and scalars."""
+    numeric_values = []
+    for value in comp_row:
+        if isinstance(value, (int, float, np.integer, np.floating)) and not np.isnan(
+            value
+        ):
+            numeric_values.append(float(value))
+        elif isinstance(value, list):
+            numeric_values.extend(
+                float(item)
+                for item in value
+                if isinstance(item, (int, float, np.integer, np.floating))
+                and not np.isnan(item)
+            )
+    return numeric_values
+
+
+def _is_numeric_array(data_array):
+    """Check if array contains numeric data."""
+    if data_array.dtype != object:
+        return True
+    first_elem = data_array.flat[0] if data_array.size > 0 else None
+    return isinstance(first_elem, (int, float, np.integer, np.floating))

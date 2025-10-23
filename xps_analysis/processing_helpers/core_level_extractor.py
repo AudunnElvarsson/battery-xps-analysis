@@ -3,6 +3,10 @@
 This module provides functionality to extract core level information from
 XPS filenames following the convention where the core level is the last
 underscore-separated part of the filename (before the file extension).
+
+Public Functions
+----------------
+extract_core_level : Extract core level from XPS filename
 """
 
 import os

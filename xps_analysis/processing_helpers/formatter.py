@@ -1,7 +1,13 @@
-"""
-XPS output formatting utilities.
+"""XPS output formatting utilities.
 
 This module contains functions for formatting and displaying XPS analysis results.
+
+Public Functions
+----------------
+format_table_value : Format a value for table display with width constraints
+calculate_column_widths : Calculate optimal column widths for table display
+build_table_header : Build formatted table header and separator
+build_table_row : Build a single formatted table row
 """
 
 

@@ -2,6 +2,14 @@
 
 This module handles axis setup, configuration, and management for XPS plots
 including axis inversion, residual axis formatting, and figure/axes preparation.
+
+Public Functions
+----------------
+get_x_axis_from_dict : Get x-axis data and metadata from spectrum mapping
+figure_from_axes : Return the Figure for an axes-like input
+select_target_axis : Select appropriate axis for plotting residuals vs data
+ensure_axes_and_main : Create or extract main and residual axes
+configure_axes : Apply axis labels, limits, and inversion
 """
 
 import matplotlib.pyplot as plt

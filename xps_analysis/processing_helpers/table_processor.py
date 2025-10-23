@@ -1,8 +1,14 @@
-"""
-XPS table processing utilities.
+"""XPS table processing utilities.
 
 This module contains functions for processing and structuring XPS data tables,
 including header cleaning, row grouping, and data conversion.
+
+Public Functions
+----------------
+clean_header : Normalize a header line into cleaned and raw headers
+group_rows_by_name : Group table rows by repeating name column
+table_to_dict : Convert grouped rows to dictionary format
+parse_report_rows : Parse report data rows into structured format
 """
 
 import numpy as np
