@@ -46,8 +46,12 @@ def plot_report(
     report_dict : dict
         Mapping produced by the fit-report parser (header -> arrays). Expected
         to contain a ``'Name'`` entry and the column named by ``fit_param``.
+        For multi-core format, this should be a nested dict with core level
+        keys (e.g., "C 1s", "F 1s") containing the data dictionaries.
     ax : matplotlib.axes.Axes or None, optional
         Target axis to draw on. If ``None`` a new figure and axis are created.
+        For multi-core format with multiple core levels, this is ignored and
+        subplots are created automatically.
     proc_kwargs : dict or None, optional
         Processing options for the plot. Supported keys:
         - 'fit_param' (str): Parameter to plot (default 'BE'). Common short
@@ -60,6 +64,9 @@ def plot_report(
           fit_param='BE'. If provided, plots relative BE with respect to the
           first value of the reference component. If not provided, plots
           absolute binding energies (default behavior).
+        - 'core_level' (str): For multi-core format, specify which core level
+          to plot (e.g., "C 1s", "F 1s"). If not provided, all core levels
+          will be plotted in separate subplots.
     plot_kwargs : dict or None, optional
         Keyword arguments forwarded to :meth:`matplotlib.axes.Axes.plot` for
         the component series (overrides module defaults).
@@ -81,6 +88,72 @@ def plot_report(
         print("No data to plot.")
         return
 
+    # Check if multi-core format (nested dict with core level keys)
+    is_multicore = "Core Level" in report_dict and "Name" not in report_dict
+
+    if is_multicore:
+        # Multi-core format handling
+        core_levels = [
+            k for k in report_dict.keys() if k not in ["Core Level", "File Name"]
+        ]
+        selected_core = proc_kwargs.get("core_level", None)
+
+        if selected_core:
+            # Plot only the selected core level
+            if selected_core not in core_levels:
+                print(
+                    f"Core level '{selected_core}' not found. Available: {core_levels}"
+                )
+                return
+            _plot_single_core_level(
+                report_dict[selected_core],
+                ax,
+                proc_kwargs,
+                plot_kwargs,
+                save_kwargs,
+            )
+        else:
+            # Plot all core levels in subplots
+            _plot_all_core_levels(
+                report_dict,
+                core_levels,
+                proc_kwargs,
+                plot_kwargs,
+                save_kwargs,
+            )
+    else:
+        # Single-core format (original behavior)
+        _plot_single_core_level(
+            report_dict,
+            ax,
+            proc_kwargs,
+            plot_kwargs,
+            save_kwargs,
+        )
+
+
+def _plot_single_core_level(
+    report_dict,
+    ax,
+    proc_kwargs,
+    plot_kwargs,
+    save_kwargs,
+):
+    """Plot a single core level's data.
+
+    Parameters
+    ----------
+    report_dict : dict
+        Single core level data dictionary with 'Name' and parameter arrays.
+    ax : matplotlib.axes.Axes or None
+        Target axis or None to create new.
+    proc_kwargs : dict
+        Processing options.
+    plot_kwargs : dict
+        Plot styling options.
+    save_kwargs : dict
+        Save options.
+    """
     fig, ax, main_ax, plot_here = ensure_axes_and_main(ax)
 
     # Get column name and convert to relative BE if needed
@@ -121,6 +194,96 @@ def plot_report(
 
     if plot_here:
         plt.show()
+
+
+def _plot_all_core_levels(
+    report_dict,
+    core_levels,
+    proc_kwargs,
+    plot_kwargs,
+    save_kwargs,
+):
+    """Plot all core levels in separate subplots.
+
+    Parameters
+    ----------
+    report_dict : dict
+        Multi-core format dictionary with core level keys.
+    core_levels : list of str
+        List of core level names to plot.
+    proc_kwargs : dict
+        Processing options.
+    plot_kwargs : dict
+        Plot styling options.
+    save_kwargs : dict
+        Save options.
+    """
+    n_cores = len(core_levels)
+
+    # Create subplots - arrange in grid
+    n_cols = min(3, n_cores)  # Max 3 columns
+    n_rows = (n_cores + n_cols - 1) // n_cols  # Ceiling division
+
+    fig, axes = plt.subplots(
+        n_rows,
+        n_cols,
+        figsize=(6 * n_cols, 5 * n_rows),
+        squeeze=False,
+    )
+    fig.set_tight_layout(True)
+
+    # Get column name
+    col_full = get_column_name(proc_kwargs.get("fit_param", "BE"))
+
+    # Plot each core level
+    for idx, core_level in enumerate(core_levels):
+        row = idx // n_cols
+        col = idx % n_cols
+        ax = axes[row, col]
+
+        # Get data for this core level
+        core_data = report_dict[core_level]
+        reference = proc_kwargs.get("reference", None)
+        plot_dict = core_data
+        plot_col = col_full
+
+        # Convert to relative BE if needed
+        if reference and "Binding Energy" in col_full:
+            plot_dict = convert_to_relative_be(core_data, col_full, reference)
+            if plot_dict is not core_data:
+                plot_col = "Relative Binding Energy (eV)"
+
+        # Plot the data
+        plot_report_series(
+            plot_dict,
+            ax,
+            plot_col,
+            update_plot_params({"ls": "--", "lw": 1.5, "m": "o"}, plot_kwargs),
+            {
+                "calculate": proc_kwargs.get("calculate", "average"),
+                "swap_axes": "Binding Energy" in plot_col,
+            },
+        )
+
+        # Configure this subplot
+        _configure_report_axes(ax, plot_col, core_level)
+
+    # Hide unused subplots
+    for idx in range(n_cores, n_rows * n_cols):
+        row = idx // n_cols
+        col = idx % n_cols
+        axes[row, col].set_visible(False)
+
+    # Save figure if requested
+    if save_kwargs.get("save_fig", False):
+        save_figure(
+            fig,
+            name_list=[derive_file_name(report_dict)],
+            save_args=save_kwargs,
+            prefix="",
+        )
+
+    plt.show()
 
 
 def _configure_report_axes(ax, col_full, core_level):

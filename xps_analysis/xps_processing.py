@@ -27,7 +27,10 @@ from .processing_helpers import (
     convert_data_types,
     clean_header,
     group_rows_by_name,
+    group_rows_by_dataset,
+    has_dataset_column,
     table_to_dict,
+    table_to_dict_exclude_columns,
     parse_report_rows,
     add_file_metadata,
     extract_component_names,
@@ -44,9 +47,16 @@ def read_report_file(file_path):
     The function locates the first table header containing "Comp Label" and
     parses the subsequent rows into a dictionary of 2D NumPy arrays. Header
     names are cleaned (for example, "Position" is converted to
-    "Binding Energy (eV)"). The returned dictionary will also include a
-    ``"File Name"`` key containing the input file's base name for downstream
-    use (e.g. when saving figures).
+    "Binding Energy (eV)").
+
+    The function automatically detects two file formats:
+
+    1. **Single core level format**: Traditional format with one core level.
+       Returns a flat dictionary with parameter arrays.
+
+    2. **Multi-core level format**: New format with "Data Set" column and
+       multiple core levels. Returns a nested dictionary where each core level
+       is a key containing its own parameter arrays.
 
     Parameters
     ----------
@@ -56,8 +66,10 @@ def read_report_file(file_path):
     Returns
     -------
     dict | None
-        Mapping from header names to 2D NumPy arrays, or ``None`` if the file
-        does not exist or no table header is found.
+        For single core level: Mapping from header names to 2D NumPy arrays.
+        For multi-core level: Nested dict with core levels as keys, each
+        containing parameter arrays. Also includes "File Name" and "Core Level"
+        metadata keys. Returns ``None`` if file not found or no header.
     """
 
     if not os.path.isfile(file_path):
@@ -67,10 +79,17 @@ def read_report_file(file_path):
     with open(file_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
-    # Find header line and index
+    # Find header line - try both old format (starts with "Name") and new format (starts with "Data Set")
     header_line, header_idx = find_header(
-        lines, ("Name",), required_substring="Comp Label"
+        lines, ("Data Set",), required_substring="Comp Label"
     )
+
+    if header_idx is None:
+        # Fall back to old format
+        header_line, header_idx = find_header(
+            lines, ("Name",), required_substring="Comp Label"
+        )
+
     if header_idx is None:
         print("No table header found.")
         return None
@@ -78,12 +97,39 @@ def read_report_file(file_path):
     header, raw_header = clean_header(header_line)
     header = ["Binding Energy (eV)" if h == "Position" else h for h in header]
 
-    # Parse table rows and convert to structured dict
+    # Parse table rows
     table_rows = parse_report_rows(lines, header_idx, header, raw_header)
-    name_idx = header.index("Comp Label")
-    groups = group_rows_by_name(table_rows, name_idx)
-    result_dict = table_to_dict(groups, header)
-    add_file_metadata(result_dict, file_path)
+
+    # Check if this is the new multi-core format
+    if has_dataset_column(header):
+        # Multi-core level format
+        dataset_idx = header.index("Data Set")
+        tag_idx = header.index("Tag")
+
+        # Group by dataset and core level
+        core_level_groups = group_rows_by_dataset(table_rows, dataset_idx, tag_idx)
+
+        # Build result dictionary with nested structure
+        # Exclude "Data Set" and "Tag" columns from the output
+        result_dict = {}
+        exclude_cols = [dataset_idx, tag_idx]
+
+        for core_level, groups in core_level_groups.items():
+            result_dict[core_level] = table_to_dict_exclude_columns(
+                groups, header, exclude_cols
+            )
+
+        # Add metadata (use first core level as default for backwards compatibility)
+        first_core = next(iter(result_dict.keys()))
+        result_dict["Core Level"] = first_core
+        add_file_metadata(result_dict, file_path)
+
+    else:
+        # Original single core level format
+        name_idx = header.index("Comp Label")
+        groups = group_rows_by_name(table_rows, name_idx)
+        result_dict = table_to_dict(groups, header)
+        add_file_metadata(result_dict, file_path)
 
     return result_dict
 
@@ -156,7 +202,7 @@ def read_spectrum_file(file_path):
     return renamed_dict
 
 
-def print_report_averages(fit_data, reference="A"):
+def print_report_averages(fit_data, reference="A", core_level=None):
     """Print a table with average values for numeric entries in fit report data.
 
     This function calculates and displays averages for all numeric entries
@@ -170,17 +216,57 @@ def print_report_averages(fit_data, reference="A"):
     ----------
     fit_data : dict
         Dictionary returned by ``read_report_file`` containing 2D NumPy
-        arrays with fit parameters.
+        arrays with fit parameters. For multi-core format, this should be a
+        nested dict with core level keys (e.g., "C 1s", "F 1s").
     reference : str, optional
         Label of the component to use as reference for relative binding energy
         calculation (default "A"). The relative BE column shows the difference
         in binding energy with respect to this reference component.
+    core_level : str, optional
+        For multi-core format, specify which core level to print. If not
+        provided, all core levels will be printed sequentially.
     """
     # Validate input data
     if not fit_data:
         print("No data to process.")
         return
 
+    # Check if multi-core format (nested dict with core level keys)
+    is_multicore = "Core Level" in fit_data and "Name" not in fit_data
+
+    if is_multicore:
+        # Multi-core format handling
+        core_levels = [
+            k for k in fit_data.keys() if k not in ["Core Level", "File Name"]
+        ]
+
+        if core_level:
+            # Print only the selected core level
+            if core_level not in core_levels:
+                print(f"Core level '{core_level}' not found. Available: {core_levels}")
+                return
+            _print_single_core_level(fit_data[core_level], reference)
+        else:
+            # Print all core levels
+            for idx, cl in enumerate(core_levels):
+                if idx > 0:
+                    print("\n")  # Add spacing between core levels
+                _print_single_core_level(fit_data[cl], reference)
+    else:
+        # Single-core format (original behavior)
+        _print_single_core_level(fit_data, reference)
+
+
+def _print_single_core_level(fit_data, reference="A"):
+    """Print averages table for a single core level's data.
+
+    Parameters
+    ----------
+    fit_data : dict
+        Single core level data dictionary with 'Name' and parameter arrays.
+    reference : str, optional
+        Label of the reference component for relative BE calculation.
+    """
     if "Name" not in fit_data:
         print("No 'Name' column found in data.")
         return

@@ -68,7 +68,7 @@ def main():
     )
     experiment_folder = r"250221_Gr_XPS_beam_damage_and_neutralizers/3_output/"
     save_folder = project_folder + experiment_folder
-    report_file = save_folder + r"5_e_beam_unwashed_before_after_report_C1s.txt"
+    report_file = save_folder + r"5_e_beam_unwashed_before_after_report_F1s_O1s_C1s.txt"
     spectrum_file = save_folder + r"2_beam_damage_unwashed_spectrum_C1s.txt"
 
     # Flags to control execution

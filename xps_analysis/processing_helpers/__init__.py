@@ -10,7 +10,10 @@ from .file_parser import (
 from .table_processor import (
     clean_header,
     group_rows_by_name,
+    group_rows_by_dataset,
+    has_dataset_column,
     table_to_dict,
+    table_to_dict_exclude_columns,
     parse_report_rows,
 )
 from .data_analyzer import (
@@ -35,7 +38,10 @@ __all__ = [
     # Table processing
     "clean_header",
     "group_rows_by_name",
+    "group_rows_by_dataset",
+    "has_dataset_column",
     "table_to_dict",
+    "table_to_dict_exclude_columns",
     "parse_report_rows",
     # Data analysis
     "process_parameter",
