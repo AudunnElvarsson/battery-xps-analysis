@@ -211,13 +211,17 @@ def plot_report_series(report_dict, ax, col_full, params, plot_options=None):
             plot_options.get("calculate", "average"),
         )
 
+        # Format legend text
+        comp_label = _get_comp_label(names, i).ljust(max_len)
+        legend_text = f"{comp_label} ({stat_label}={stat_value:7.2f})"
+
         # Plot the component series with average line
         _plot_component_series(
             ax,
             {
                 "x_vals": x_vals,
                 "y_vals": y_data[i],
-                "legend_text": f"{_get_comp_label(names, i).ljust(max_len)} ({stat_label}={stat_value:7.2f})",
+                "legend_text": legend_text,
             },
             params,
             {
