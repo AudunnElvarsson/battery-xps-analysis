@@ -22,8 +22,29 @@ def report_parameters(report_dict, save_param=None):
     proc_param = {"fit_param": "BE", "calculate": "difference", "reference": ""}
     plot_param = {"linestyle": "-"}
 
-    fig, axes = plt.subplots(figsize=(8, 6))
-    fig.set_tight_layout(True)
+    # Check if multi-core format
+    is_multicore = "Core Level" in report_dict and "Name" not in report_dict
+
+    if is_multicore and "core_level" not in proc_param:
+        # Multi-core format plotting all core levels - create grid of axes
+        core_levels = [
+            k for k in report_dict.keys() if k not in ["Core Level", "File Name"]
+        ]
+        n_cores = len(core_levels)
+        n_cols = min(3, n_cores)  # Max 3 columns
+        n_rows = (n_cores + n_cols - 1) // n_cols  # Ceiling division
+
+        fig, axes = plt.subplots(
+            n_rows,
+            n_cols,
+            figsize=(6 * n_cols, 5 * n_rows),
+            squeeze=False,
+        )
+        fig.set_tight_layout(True)
+    else:
+        # Single core level or specific core level selected
+        fig, axes = plt.subplots(figsize=(8, 6))
+        fig.set_tight_layout(True)
 
     xplot.plot_report(
         report_dict,
@@ -62,6 +83,12 @@ def main():
     """
     Main function to control what runs.
     """
+    # Flags to control execution
+    run_convert_all_vms_in_project = False
+    run_print_report = True
+    run_plot_report = True
+    run_plot_spectrum = False
+
     project_folder = (
         r"c:/Users/audun/OneDrive - Chalmers/Documents/Research/"
         r"1_Improving_XPS_Analysis_Methods/1_data/"
@@ -71,11 +98,6 @@ def main():
     report_file = save_folder + r"5_e_beam_unwashed_before_after_report_F1s_O1s_C1s.txt"
     spectrum_file = save_folder + r"2_beam_damage_unwashed_spectrum_C1s.txt"
 
-    # Flags to control execution
-    run_convert_all_vms_in_project = False
-    run_print_report = True
-    run_plot_report = True
-    run_plot_spectrum = False
     save_param = {"save_fig": False, "format": "png", "save_folder": save_folder}
 
     if run_convert_all_vms_in_project:

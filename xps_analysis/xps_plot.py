@@ -48,10 +48,13 @@ def plot_report(
         to contain a ``'Name'`` entry and the column named by ``fit_param``.
         For multi-core format, this should be a nested dict with core level
         keys (e.g., "C 1s", "F 1s") containing the data dictionaries.
-    ax : matplotlib.axes.Axes or None, optional
+    ax : matplotlib.axes.Axes, array of Axes, or None, optional
         Target axis to draw on. If ``None`` a new figure and axis are created.
-        For multi-core format with multiple core levels, this is ignored and
-        subplots are created automatically.
+        For single-core or when 'core_level' is specified, this should be a
+        single Axes object. For multi-core format plotting all core levels,
+        this can be an array of Axes (e.g., from plt.subplots). If the number
+        of provided axes matches the number of core levels, they will be used;
+        otherwise, new subplots are created automatically.
     proc_kwargs : dict or None, optional
         Processing options for the plot. Supported keys:
         - 'fit_param' (str): Parameter to plot (default 'BE'). Common short
@@ -117,6 +120,7 @@ def plot_report(
             _plot_all_core_levels(
                 report_dict,
                 core_levels,
+                ax,
                 proc_kwargs,
                 plot_kwargs,
                 save_kwargs,
@@ -199,6 +203,7 @@ def _plot_single_core_level(
 def _plot_all_core_levels(
     report_dict,
     core_levels,
+    ax,
     proc_kwargs,
     plot_kwargs,
     save_kwargs,
@@ -211,6 +216,9 @@ def _plot_all_core_levels(
         Multi-core format dictionary with core level keys.
     core_levels : list of str
         List of core level names to plot.
+    ax : matplotlib.axes.Axes, array of Axes, or None
+        Target axes to use. If None or if the number doesn't match core_levels,
+        new subplots are created.
     proc_kwargs : dict
         Processing options.
     plot_kwargs : dict
@@ -218,28 +226,55 @@ def _plot_all_core_levels(
     save_kwargs : dict
         Save options.
     """
+    import numpy as np
+
     n_cores = len(core_levels)
 
-    # Create subplots - arrange in grid
-    n_cols = min(3, n_cores)  # Max 3 columns
-    n_rows = (n_cores + n_cols - 1) // n_cols  # Ceiling division
+    # Check if we have a valid array of axes provided
+    axes_provided = False
+    if ax is not None:
+        try:
+            # Try to get it as an array
+            ax_array = np.atleast_1d(ax)
+            # Flatten if it's a 2D array from subplots
+            if ax_array.ndim > 1:
+                ax_array = ax_array.flatten()
+            # Check if we have the right number
+            if len(ax_array) >= n_cores:
+                axes = ax_array
+                axes_provided = True
+                fig = axes[0].get_figure()
+        except (TypeError, AttributeError):
+            # Not an array, might be a single axis
+            if hasattr(ax, "get_figure"):
+                # Single axis provided for multi-core - can't use it
+                axes_provided = False
 
-    fig, axes = plt.subplots(
-        n_rows,
-        n_cols,
-        figsize=(6 * n_cols, 5 * n_rows),
-        squeeze=False,
-    )
-    fig.set_tight_layout(True)
+    # Create new subplots if axes not provided or incompatible
+    if not axes_provided:
+        # Create subplots - arrange in grid
+        n_cols = min(3, n_cores)  # Max 3 columns
+        n_rows = (n_cores + n_cols - 1) // n_cols  # Ceiling division
+
+        fig, axes = plt.subplots(
+            n_rows,
+            n_cols,
+            figsize=(6 * n_cols, 5 * n_rows),
+            squeeze=False,
+        )
+        fig.set_tight_layout(True)
+        axes = axes.flatten()
+        plot_here = True
+    else:
+        # Using provided axes
+        plot_here = False
 
     # Get column name
     col_full = get_column_name(proc_kwargs.get("fit_param", "BE"))
 
     # Plot each core level
     for idx, core_level in enumerate(core_levels):
-        row = idx // n_cols
-        col = idx % n_cols
-        ax = axes[row, col]
+        current_ax = axes[idx]
 
         # Get data for this core level
         core_data = report_dict[core_level]
@@ -256,7 +291,7 @@ def _plot_all_core_levels(
         # Plot the data
         plot_report_series(
             plot_dict,
-            ax,
+            current_ax,
             plot_col,
             update_plot_params({"ls": "--", "lw": 1.5, "m": "o"}, plot_kwargs),
             {
@@ -266,13 +301,14 @@ def _plot_all_core_levels(
         )
 
         # Configure this subplot
-        _configure_report_axes(ax, plot_col, core_level)
+        _configure_report_axes(current_ax, plot_col, core_level)
 
-    # Hide unused subplots
-    for idx in range(n_cores, n_rows * n_cols):
-        row = idx // n_cols
-        col = idx % n_cols
-        axes[row, col].set_visible(False)
+    # Hide unused subplots (only if we created them)
+    if not axes_provided:
+        n_cols = min(3, n_cores)
+        n_rows = (n_cores + n_cols - 1) // n_cols
+        for idx in range(n_cores, n_rows * n_cols):
+            axes[idx].set_visible(False)
 
     # Save figure if requested
     if save_kwargs.get("save_fig", False):
@@ -283,7 +319,8 @@ def _plot_all_core_levels(
             prefix="",
         )
 
-    plt.show()
+    if plot_here:
+        plt.show()
 
 
 def _configure_report_axes(ax, col_full, core_level):
