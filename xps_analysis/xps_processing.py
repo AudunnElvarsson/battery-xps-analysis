@@ -14,7 +14,7 @@ Key Functions
 -------------
 read_report_file : Parse XPS report files into structured dictionaries
 read_spectrum_file : Parse XPS spectrum data files into dictionaries
-print_report_averages : Print table of average values from report data
+print_report : Print table of average values from report data
 get_core_levels : Get list of core levels from a report dictionary
 """
 
@@ -97,6 +97,7 @@ def read_report_file(file_path):
 
     header, raw_header = clean_header(header_line)
     header = ["Binding Energy (eV)" if h == "Position" else h for h in header]
+    header = ["RSF" if h == "Library RSF" else h for h in header]
 
     # Parse table rows
     table_rows = parse_report_rows(lines, header_idx, header, raw_header)
@@ -248,7 +249,7 @@ def read_spectrum_file(file_path):
     return renamed_dict
 
 
-def print_report_averages(fit_data, reference="A", core_level=None):
+def print_report(fit_data, reference="A", core_level=None):
     """Print a table with average values for numeric entries in fit report data.
 
     This function calculates and displays averages for all numeric entries
@@ -285,25 +286,35 @@ def print_report_averages(fit_data, reference="A", core_level=None):
         core_levels = [
             k for k in fit_data.keys() if k not in ["Core Level", "File Name"]
         ]
+        parent_file_name = fit_data.get("File Name")
 
         if core_level:
             # Print only the selected core level
             if core_level not in core_levels:
                 print(f"Core level '{core_level}' not found. Available: {core_levels}")
                 return
-            _print_single_core_level(fit_data[core_level], reference)
+            _print_single_core_level(
+                fit_data[core_level],
+                reference,
+                parent_file_name,
+                core_level_override=core_level,
+            )
         else:
             # Print all core levels
             for idx, cl in enumerate(core_levels):
                 if idx > 0:
                     print("\n")  # Add spacing between core levels
-                _print_single_core_level(fit_data[cl], reference)
+                _print_single_core_level(
+                    fit_data[cl], reference, parent_file_name, core_level_override=cl
+                )
     else:
         # Single-core format (original behavior)
         _print_single_core_level(fit_data, reference)
 
 
-def _print_single_core_level(fit_data, reference="A"):
+def _print_single_core_level(
+    fit_data, reference="A", file_name_override=None, core_level_override=None
+):
     """Print averages table for a single core level's data.
 
     Parameters
@@ -364,8 +375,10 @@ def _print_single_core_level(fit_data, reference="A"):
     header, separator = build_table_header(max_comp_width, all_parameters, param_widths)
 
     # Print table
-    core_level = fit_data.get("Core Level") or "Unknown"
-    file_name = f"File: {fit_data.get("File Name", "Unknown file")}"
+    core_level = core_level_override or fit_data.get("Core Level") or "Unknown"
+    # Prefer provided file name (from parent in multi-core), else from this dict
+    display_file = file_name_override or fit_data.get("File Name", "Unknown file")
+    file_name = f"File: {display_file}"
     title = f"Average values from fit report - {core_level}"
     print(
         f"{'═' * int(np.floor((len(header) - len(title)) / 2 - 1))}",

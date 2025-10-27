@@ -123,6 +123,7 @@ def plot_report(
                 proc_kwargs,
                 plot_kwargs,
                 save_kwargs,
+                core_level_override=selected_core,
             )
         elif selected_cores:
             # Plot selected subset of core levels
@@ -169,6 +170,7 @@ def _plot_single_core_level(
     proc_kwargs,
     plot_kwargs,
     save_kwargs,
+    core_level_override=None,
 ):
     """Plot a single core level's data.
 
@@ -211,7 +213,9 @@ def _plot_single_core_level(
 
     # Configure axes and legend
     _configure_report_axes(
-        main_ax, col_full, report_dict.get("Core Level") or "Unknown"
+        main_ax,
+        col_full,
+        core_level_override or report_dict.get("Core Level") or "Unknown",
     )
 
     # Save figure if requested

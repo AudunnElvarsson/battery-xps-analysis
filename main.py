@@ -96,7 +96,7 @@ def main():
         report_dict = xp.read_report_file(report_file)
 
         if run_print_report:
-            xp.print_report_averages(report_dict, reference="A")
+            xp.print_report(report_dict, reference="A")
 
         if run_plot_report:
             report_parameters(report_dict, save_param=save_param)
