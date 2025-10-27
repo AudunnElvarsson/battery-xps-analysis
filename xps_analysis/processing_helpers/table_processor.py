@@ -84,10 +84,15 @@ def group_rows_by_dataset(table_data, dataset_idx, tag_idx):
     """
     # First, organize by data set and core level
     by_dataset_and_core = {}
+    dataset_order = []  # Track order of datasets as they appear
 
     for row in table_data:
         dataset = row[dataset_idx] if row[dataset_idx] else "current"
         core_level = row[tag_idx]
+
+        # Track the order of datasets as they first appear
+        if dataset not in dataset_order:
+            dataset_order.append(dataset)
 
         key = (dataset, core_level)
         if key not in by_dataset_and_core:
@@ -95,12 +100,12 @@ def group_rows_by_dataset(table_data, dataset_idx, tag_idx):
         by_dataset_and_core[key].append(row)
 
     # Now organize by core level with groups for each measurement
+    # Preserve the original order of datasets instead of sorting
     result = {}
-    datasets = sorted(set(k[0] for k in by_dataset_and_core.keys()))
 
     for core_level in set(k[1] for k in by_dataset_and_core.keys()):
         result[core_level] = []
-        for dataset in datasets:
+        for dataset in dataset_order:  # Use original order, not sorted
             key = (dataset, core_level)
             if key in by_dataset_and_core:
                 result[core_level].append(by_dataset_and_core[key])
