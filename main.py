@@ -20,7 +20,7 @@ def report_parameters(report_dict, save_param=None):
     Plot the composition report from the specified file path and save figure.
     """
     # Select which core levels to plot
-    selected_cores = ["C 1s", "O 1s"]
+    selected_cores = ["F 1s", "O 1s", "C 1s"]
 
     proc_param = {
         "fit_param": "BE",

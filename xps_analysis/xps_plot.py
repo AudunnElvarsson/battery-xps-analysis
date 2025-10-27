@@ -67,13 +67,12 @@ def plot_report(
           fit_param='BE'. If provided, plots relative BE with respect to the
           first value of the reference component. If not provided, plots
           absolute binding energies (default behavior).
-        - 'core_level' (str): For multi-core format, specify which single
-          core level to plot (e.g., "C 1s", "F 1s"). If not provided, all
-          core levels will be plotted in separate subplots.
-        - 'core_levels' (list of str): For multi-core format, specify which
-          core levels to plot (e.g., ["C 1s", "O 1s"]). This allows plotting
-          a subset of available core levels. If not provided, all core levels
-          are plotted. Note: 'core_level' takes precedence over 'core_levels'.
+        - 'core_levels' (str, list of str, or None): For multi-core format,
+          specify which core levels to plot. Can be:
+          * A single string: "C 1s" - plots only that core level
+          * A list with one string: ["C 1s"] - plots only that core level
+          * A list with multiple strings: ["C 1s", "O 1s"] - plots those core levels
+          * None, empty string "", empty list [], or [""] - plots all core levels
     plot_kwargs : dict or None, optional
         Keyword arguments forwarded to :meth:`matplotlib.axes.Axes.plot` for
         the component series (overrides module defaults).
@@ -104,50 +103,58 @@ def plot_report(
             k for k in report_dict.keys() if k not in ["Core Level", "File Name"]
         ]
 
-        # Check for single core level selection
-        selected_core = proc_kwargs.get("core_level", None)
+        # Get core_levels parameter and normalize it to a list
+        core_levels_input = proc_kwargs.get("core_levels", None)
 
-        # Check for multiple core levels selection
-        selected_cores = proc_kwargs.get("core_levels", None)
+        # Normalize core_levels_input to a list
+        # Handle: None, "", [], [""], "C 1s", ["C 1s"], ["C 1s", "O 1s"]
+        if (
+            core_levels_input is None
+            or core_levels_input == ""
+            or core_levels_input == []
+        ):
+            # Plot all core levels
+            selected_cores = all_core_levels
+        elif isinstance(core_levels_input, str):
+            # Single core level as string
+            selected_cores = [core_levels_input]
+        elif isinstance(core_levels_input, list):
+            # List of core levels
+            if len(core_levels_input) == 0 or (
+                len(core_levels_input) == 1 and core_levels_input[0] == ""
+            ):
+                # Empty list or list with empty string
+                selected_cores = all_core_levels
+            else:
+                selected_cores = core_levels_input
+        else:
+            raise TypeError(
+                f"core_levels must be str, list, or None, got {type(core_levels_input)}"
+            )
 
-        if selected_core:
-            # Plot only the single selected core level
-            if selected_core not in all_core_levels:
-                print(
-                    f"Core level '{selected_core}' not found. Available: {all_core_levels}"
-                )
-                return
+        # Validate that all selected core levels exist
+        invalid_cores = [c for c in selected_cores if c not in all_core_levels]
+        if invalid_cores:
+            print(
+                f"Core level(s) {invalid_cores} not found. Available: {all_core_levels}"
+            )
+            return
+
+        # If only one core level is selected, plot it as a single plot
+        if len(selected_cores) == 1:
             _plot_single_core_level(
-                report_dict[selected_core],
+                report_dict[selected_cores[0]],
                 ax,
                 proc_kwargs,
                 plot_kwargs,
                 save_kwargs,
-                core_level_override=selected_core,
+                core_level_override=selected_cores[0],
             )
-        elif selected_cores:
-            # Plot selected subset of core levels
-            # Validate that all requested core levels exist
-            invalid_cores = [c for c in selected_cores if c not in all_core_levels]
-            if invalid_cores:
-                print(
-                    f"Core level(s) {invalid_cores} not found. Available: {all_core_levels}"
-                )
-                return
-
+        else:
+            # Plot multiple core levels
             _plot_all_core_levels(
                 report_dict,
                 selected_cores,
-                ax,
-                proc_kwargs,
-                plot_kwargs,
-                save_kwargs,
-            )
-        else:
-            # Plot all core levels in subplots
-            _plot_all_core_levels(
-                report_dict,
-                all_core_levels,
                 ax,
                 proc_kwargs,
                 plot_kwargs,
