@@ -15,6 +15,7 @@ Key Functions
 read_report_file : Parse XPS report files into structured dictionaries
 read_spectrum_file : Parse XPS spectrum data files into dictionaries
 print_report_averages : Print table of average values from report data
+get_core_levels : Get list of core levels from a report dictionary
 """
 
 import os
@@ -132,6 +133,51 @@ def read_report_file(file_path):
         add_file_metadata(result_dict, file_path)
 
     return result_dict
+
+
+def get_core_levels(report_dict):
+    """Get list of core levels from a report dictionary.
+
+    For multi-core format files, this returns the list of core level names
+    (e.g., ["C 1s", "F 1s", "O 1s"]). For single-core format files, this
+    returns a list containing the single core level name if available, or
+    an empty list if the core level cannot be determined.
+
+    Parameters
+    ----------
+    report_dict : dict
+        Dictionary returned by ``read_report_file``.
+
+    Returns
+    -------
+    list of str
+        List of core level names found in the report. For multi-core files,
+        this contains all core levels. For single-core files, this contains
+        one element (the core level name) or is empty if not determinable.
+
+    Examples
+    --------
+    >>> report_dict = read_report_file("multicore_report.txt")
+    >>> core_levels = get_core_levels(report_dict)
+    >>> print(core_levels)
+    ['C 1s', 'F 1s', 'O 1s']
+    >>> # Create figure with correct number of subplots
+    >>> fig, axes = plt.subplots(1, len(core_levels), figsize=(6*len(core_levels), 5))
+    """
+    if not report_dict:
+        return []
+
+    # Check if multi-core format
+    is_multicore = "Core Level" in report_dict and "Name" not in report_dict
+
+    if is_multicore:
+        # Multi-core format - extract core level keys
+        return [k for k in report_dict.keys() if k not in ["Core Level", "File Name"]]
+    else:
+        # Single-core format - try to get core level from metadata
+        if "Core Level" in report_dict:
+            return [report_dict["Core Level"]]
+        return []
 
 
 def read_spectrum_file(file_path):

@@ -19,32 +19,21 @@ def report_parameters(report_dict, save_param=None):
     """
     Plot the composition report from the specified file path and save figure.
     """
-    proc_param = {"fit_param": "BE", "calculate": "difference", "reference": ""}
+    # Select which core levels to plot
+    selected_cores = ["C 1s", "O 1s"]
+
+    proc_param = {
+        "fit_param": "BE",
+        "calculate": "difference",
+        "reference": "",
+        "core_levels": selected_cores,  # Use plural "core_levels" for multiple
+    }
     plot_param = {"linestyle": "-"}
 
-    # Check if multi-core format
-    is_multicore = "Core Level" in report_dict and "Name" not in report_dict
-
-    if is_multicore and "core_level" not in proc_param:
-        # Multi-core format plotting all core levels - create grid of axes
-        core_levels = [
-            k for k in report_dict.keys() if k not in ["Core Level", "File Name"]
-        ]
-        n_cores = len(core_levels)
-        n_cols = min(3, n_cores)  # Max 3 columns
-        n_rows = (n_cores + n_cols - 1) // n_cols  # Ceiling division
-
-        fig, axes = plt.subplots(
-            n_rows,
-            n_cols,
-            figsize=(6 * n_cols, 5 * n_rows),
-            squeeze=False,
-        )
-        fig.set_tight_layout(True)
-    else:
-        # Single core level or specific core level selected
-        fig, axes = plt.subplots(figsize=(8, 6))
-        fig.set_tight_layout(True)
+    # Create the right number of subplots based on selected cores
+    n_cores = len(selected_cores)
+    fig, axes = plt.subplots(1, n_cores, figsize=(6 * n_cores, 5))
+    fig.set_tight_layout(True)
 
     xplot.plot_report(
         report_dict,
