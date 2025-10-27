@@ -8,7 +8,11 @@ format_table_value : Format a value for table display with width constraints
 calculate_column_widths : Calculate optimal column widths for table display
 build_table_header : Build formatted table header and separator
 build_table_row : Build a single formatted table row
+print_single_core_level : Print formatted table for a single core level
 """
+
+import numpy as np
+from .data_analyzer import extract_component_names, process_all_parameters
 
 
 def format_table_value(value, width):
@@ -114,3 +118,119 @@ def build_table_row(
         else:
             row += f" {'N/A':^{param_widths[param]}} │"
     return row
+
+
+def print_single_core_level(
+    fit_data, reference="A", file_name_override=None, core_level_override=None
+):
+    """Print formatted table of average values for a single core level.
+
+    This function displays a nicely formatted table showing average values
+    for all parameters in the fit data. Relative binding energies are
+    calculated with respect to a reference component.
+
+    Parameters
+    ----------
+    fit_data : dict
+        Single core level data dictionary with 'Name' and parameter arrays.
+        Must contain at least a 'Name' key with component names.
+    reference : str, optional
+        Label of the reference component for relative BE calculation
+        (default "A"). The relative BE is calculated as the difference
+        from this component's binding energy.
+    file_name_override : str or None, optional
+        Override for file name display. If None, uses fit_data['File Name'].
+        Used when printing multi-core data where parent file name should
+        be shown.
+    core_level_override : str or None, optional
+        Override for core level name in title. If None, uses
+        fit_data['Core Level'] or 'Unknown'.
+
+    Returns
+    -------
+    None
+        Prints formatted table to stdout.
+
+    Notes
+    -----
+    - Constraint parameters (containing "Constr.") are excluded
+    - Relative BE column is added after BE if reference component is found
+    - String parameters are checked for consistency across measurements
+    """
+    if "Name" not in fit_data:
+        print("No 'Name' column found in data.")
+        return
+
+    if fit_data["Name"].size == 0:
+        print("No component data found.")
+        return
+
+    # Extract component names and process parameters
+    component_names = extract_component_names(fit_data)
+    numeric_params, string_params, component_data = process_all_parameters(
+        fit_data, component_names
+    )
+
+    # Calculate relative binding energies if BE data is available
+    if "BE" in numeric_params:
+        # Find reference component
+        reference_comp = None
+        for comp_name in component_names:
+            if component_data[comp_name].get("Label") == reference:
+                reference_comp = comp_name
+                break
+
+        if reference_comp and "BE" in component_data[reference_comp]:
+            reference_be = component_data[reference_comp]["BE"]
+            # Add relative BE for all components
+            for comp_name in component_names:
+                if "BE" in component_data[comp_name]:
+                    component_data[comp_name]["Rel. BE"] = (
+                        component_data[comp_name]["BE"] - reference_be
+                    )
+            # Insert "Rel. BE" after "BE" in the numeric_params list
+            be_idx = numeric_params.index("BE")
+            numeric_params.insert(be_idx + 1, "Rel. BE")
+        else:
+            print(
+                f"Warning: Reference component '{reference}' not found or has no BE data."
+            )
+
+    all_parameters = numeric_params + string_params
+    if not all_parameters:
+        print("No parameters found to display.")
+        return
+
+    # Calculate column widths and build table components
+    max_comp_width, param_widths = calculate_column_widths(
+        all_parameters, component_names, component_data
+    )
+    header, separator = build_table_header(max_comp_width, all_parameters, param_widths)
+
+    # Print table
+    core_level = core_level_override or fit_data.get("Core Level") or "Unknown"
+    # Prefer provided file name (from parent in multi-core), else from this dict
+    display_file = file_name_override or fit_data.get("File Name", "Unknown file")
+    file_name = f"File: {display_file}"
+    title = f"Average values from fit report - {core_level}"
+    print(
+        f"{'═' * int(np.floor((len(header) - len(title)) / 2 - 1))}",
+        title,
+        f"{'═' * int(np.ceil((len(header) - len(title)) / 2 - 1))}",
+    )
+    print(
+        f"{'═' * int(np.floor((len(header) - len(file_name)) / 2 - 1))}",
+        file_name,
+        f"{'═' * int(np.ceil((len(header) - len(file_name)) / 2 - 1))}\n",
+    )
+    print(header)
+    print(separator)
+
+    for comp_name in component_names:
+        print(
+            build_table_row(
+                comp_name, all_parameters, component_data, param_widths, max_comp_width
+            )
+        )
+
+    print(f"{'═' * len(header)}")

@@ -1,25 +1,30 @@
 """xps_processing
 -----------------
 
-Utilities for reading and converting XPS report and spectrum text files into
-Python structures suitable for analysis and plotting. Functions return
-dictionary-like mappings where keys are column/header names and values are
-numpy arrays (typically 1D or 2D arrays with dtype float or object).
+High-level utilities for reading and processing XPS data files.
+
+This module provides the main public API for parsing XPS report and spectrum
+text files into Python dictionaries with NumPy arrays. It handles both
+single and multi-core level data formats automatically.
 
 The module focuses on robust parsing of tab-separated text files produced by
 XPS fitting tools, handling common quirks such as duplicate "Name" columns,
 underscore-delimited headers, and comma-separated numeric fields inside cells.
 
-Key Functions
--------------
-read_report_file : Parse XPS report files into structured dictionaries
+Public Functions
+----------------
+read_report_file : Parse XPS fit report files into structured dictionaries
 read_spectrum_file : Parse XPS spectrum data files into dictionaries
-print_report : Print table of average values from report data
+print_report : Print formatted table of average values from report data
 get_core_levels : Get list of core levels from a report dictionary
+
+Notes
+-----
+Internal helper functions have been moved to the ``processing_helpers``
+package for better organization and maintainability.
 """
 
 import os
-import numpy as np
 
 # Import parsing utilities from submodules
 from .processing_helpers import (
@@ -34,11 +39,7 @@ from .processing_helpers import (
     table_to_dict_exclude_columns,
     parse_report_rows,
     add_file_metadata,
-    extract_component_names,
-    process_all_parameters,
-    calculate_column_widths,
-    build_table_header,
-    build_table_row,
+    print_single_core_level,
 )
 
 
@@ -80,7 +81,7 @@ def read_report_file(file_path):
     with open(file_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
-    # Find header line - try both old format (starts with "Name") and new format (starts with "Data Set")
+    # Find header line - check for new format (Data Set) or old format (Name)
     header_line, header_idx = find_header(
         lines, ("Data Set",), required_substring="Comp Label"
     )
@@ -184,35 +185,71 @@ def get_core_levels(report_dict):
 def read_spectrum_file(file_path):
     """Parse an XPS spectrum (data) file into a dictionary of NumPy arrays.
 
-    The function locates a header line (starting with one of ``"KE_"``,
-    ``"BE_"``, or ``"CPS_"``), parses the tab-separated columns below it, and
-    converts values to numeric types where possible. Column names are
-    simplified and renamed for consistency: keys starting with
-    ``"Normalised_Residual"`` become ``"Normalised Residual"``, keys beginning
-    with ``"CPS"`` are renamed ``"Measured"``, and underscores are removed
-    from other keys where appropriate. A ``"File Name"`` entry with the
-    input file base name is also added to the returned dict.
+    This function reads XPS spectrum files containing measured and fitted
+    spectral data. It automatically detects the data format, parses columns,
+    and returns a dictionary with cleaned, standardized key names.
+
+    The function handles:
+    - Multiple data format variations (KE_, BE_, CPS_ prefixes)
+    - Automatic column name normalization
+    - Type conversion to numeric arrays where possible
+    - Metadata extraction (file name, core level)
 
     Parameters
     ----------
     file_path : str
-        Path to the spectrum file.
+        Path to the spectrum file to read. Should be a tab-separated text
+        file with a header line starting with "KE_", "BE_", or "CPS_".
 
     Returns
     -------
-    dict
-        Mapping of processed column names to 1D NumPy arrays.
+    dict or None
+        Mapping of processed column names to 1D NumPy arrays. Key names are
+        normalized:
+        - "Normalised_Residual*" → "Normalised Residual"
+        - "CPS*" → "Measured"
+        - Other keys have underscores removed
+        Also includes 'File Name' and 'Core Level' metadata keys.
+        Returns None if file not found.
 
     Raises
     ------
     ValueError
-        If no suitable data header is found in the file.
+        If no suitable data header (starting with KE_, BE_, or CPS_) is
+        found in the file.
+
+    See Also
+    --------
+    read_report_file : Parse XPS fit report files
+
+    Examples
+    --------
+    Read a spectrum file:
+
+    >>> spectrum_dict = read_spectrum_file("C1s_spectrum.txt")
+    >>> print(spectrum_dict.keys())
+    dict_keys(['BE', 'Measured', 'Background', 'C-C', 'C-O', 'O-C=O',
+               'Residual', 'File Name', 'Core Level'])
+
+    Access the binding energy and measured intensity:
+
+    >>> be = spectrum_dict['BE']
+    >>> intensity = spectrum_dict['Measured']
+    >>> import matplotlib.pyplot as plt
+    >>> plt.plot(be, intensity)
+
+    Notes
+    -----
+    Column name normalization rules:
+    - Columns starting with "Normalised_Residual" → "Normalised Residual"
+    - Columns starting with "CPS" → "Measured"
+    - For other columns, prefix before underscore is used (e.g., "BE_1" → "BE")
     """
 
     def _rename_spectrum_keys(data_dict):
         """Internal helper: canonicalize spectrum column names.
 
-        It returns a new dict where certain prefixes are normalized and
+        Returns a new dict where certain prefixes are normalized and
         underscores are stripped from common header names.
         """
         renamed = {}
@@ -250,28 +287,67 @@ def read_spectrum_file(file_path):
 
 
 def print_report(fit_data, reference="A", core_level=None):
-    """Print a table with average values for numeric entries in fit report data.
+    """Print formatted table with average values from fit report data.
 
-    This function calculates and displays averages for all numeric entries
-    in the dictionary returned by ``read_report_file``. Averages are calculated
-    for each component (rows) across multiple measurements (columns). Constraint
-    parameters (containing "Constr." in the name) and the "File Name" entry are excluded.
-    String parameters like "Line Shape" and "Comp Label" are included and checked for
-    consistency across measurements.
+    This function calculates and displays averages for all numeric parameters
+    in XPS fit report data. For multi-core format data, you can print all
+    core levels or select specific ones.
+
+    The table shows:
+    - Average values for numeric parameters across measurements
+    - Relative binding energy (difference from reference component)
+    - String parameters (e.g., line shape, component labels)
+    - Constraint parameters are automatically excluded
 
     Parameters
     ----------
     fit_data : dict
-        Dictionary returned by ``read_report_file`` containing 2D NumPy
-        arrays with fit parameters. For multi-core format, this should be a
-        nested dict with core level keys (e.g., "C 1s", "F 1s").
+        Dictionary returned by ``read_report_file`` containing fit parameters.
+        For single-core format: flat dict with 2D NumPy arrays.
+        For multi-core format: nested dict with core level keys (e.g., "C 1s",
+        "F 1s") containing data dictionaries, plus "File Name" and "Core Level"
+        metadata.
     reference : str, optional
         Label of the component to use as reference for relative binding energy
-        calculation (default "A"). The relative BE column shows the difference
-        in binding energy with respect to this reference component.
-    core_level : str, optional
-        For multi-core format, specify which core level to print. If not
-        provided, all core levels will be printed sequentially.
+        calculation (default "A"). Relative BE shows the binding energy
+        difference with respect to this reference component.
+    core_level : str or None, optional
+        For multi-core format, specify which core level to print. If None
+        (default), all core levels are printed sequentially with spacing
+        between them.
+
+    Returns
+    -------
+    None
+        Prints formatted table(s) to stdout.
+
+    See Also
+    --------
+    read_report_file : Parse XPS fit report files
+    get_core_levels : Get list of available core levels
+
+    Examples
+    --------
+    Print all core levels from a multi-core file:
+
+    >>> report_dict = read_report_file("multicore_report.txt")
+    >>> print_report(report_dict)
+
+    Print only C 1s data with custom reference:
+
+    >>> print_report(report_dict, reference="B", core_level="C 1s")
+
+    Print single-core file:
+
+    >>> report_dict = read_report_file("single_core_report.txt")
+    >>> print_report(report_dict, reference="A")
+
+    Notes
+    -----
+    - Parameters containing "Constr." in their name are excluded from display
+    - String parameters are checked for consistency across measurements
+    - If reference component is not found, a warning is printed and relative
+      BE column is not added
     """
     # Validate input data
     if not fit_data:
@@ -293,7 +369,7 @@ def print_report(fit_data, reference="A", core_level=None):
             if core_level not in core_levels:
                 print(f"Core level '{core_level}' not found. Available: {core_levels}")
                 return
-            _print_single_core_level(
+            print_single_core_level(
                 fit_data[core_level],
                 reference,
                 parent_file_name,
@@ -304,100 +380,9 @@ def print_report(fit_data, reference="A", core_level=None):
             for idx, cl in enumerate(core_levels):
                 if idx > 0:
                     print("\n")  # Add spacing between core levels
-                _print_single_core_level(
+                print_single_core_level(
                     fit_data[cl], reference, parent_file_name, core_level_override=cl
                 )
     else:
         # Single-core format (original behavior)
-        _print_single_core_level(fit_data, reference)
-
-
-def _print_single_core_level(
-    fit_data, reference="A", file_name_override=None, core_level_override=None
-):
-    """Print averages table for a single core level's data.
-
-    Parameters
-    ----------
-    fit_data : dict
-        Single core level data dictionary with 'Name' and parameter arrays.
-    reference : str, optional
-        Label of the reference component for relative BE calculation.
-    """
-    if "Name" not in fit_data:
-        print("No 'Name' column found in data.")
-        return
-
-    if fit_data["Name"].size == 0:
-        print("No component data found.")
-        return
-
-    # Extract component names and process parameters
-    component_names = extract_component_names(fit_data)
-    numeric_params, string_params, component_data = process_all_parameters(
-        fit_data, component_names
-    )
-
-    # Calculate relative binding energies if BE data is available
-    if "BE" in numeric_params:
-        # Find reference component
-        reference_comp = None
-        for comp_name in component_names:
-            if component_data[comp_name].get("Label") == reference:
-                reference_comp = comp_name
-                break
-
-        if reference_comp and "BE" in component_data[reference_comp]:
-            reference_be = component_data[reference_comp]["BE"]
-            # Add relative BE for all components
-            for comp_name in component_names:
-                if "BE" in component_data[comp_name]:
-                    component_data[comp_name]["Rel. BE"] = (
-                        component_data[comp_name]["BE"] - reference_be
-                    )
-            # Insert "Rel. BE" after "BE" in the numeric_params list
-            be_idx = numeric_params.index("BE")
-            numeric_params.insert(be_idx + 1, "Rel. BE")
-        else:
-            print(
-                f"Warning: Reference component '{reference}' not found or has no BE data."
-            )
-
-    all_parameters = numeric_params + string_params
-    if not all_parameters:
-        print("No parameters found to display.")
-        return
-
-    # Calculate column widths and build table components
-    max_comp_width, param_widths = calculate_column_widths(
-        all_parameters, component_names, component_data
-    )
-    header, separator = build_table_header(max_comp_width, all_parameters, param_widths)
-
-    # Print table
-    core_level = core_level_override or fit_data.get("Core Level") or "Unknown"
-    # Prefer provided file name (from parent in multi-core), else from this dict
-    display_file = file_name_override or fit_data.get("File Name", "Unknown file")
-    file_name = f"File: {display_file}"
-    title = f"Average values from fit report - {core_level}"
-    print(
-        f"{'═' * int(np.floor((len(header) - len(title)) / 2 - 1))}",
-        title,
-        f"{'═' * int(np.ceil((len(header) - len(title)) / 2 - 1))}",
-    )
-    print(
-        f"{'═' * int(np.floor((len(header) - len(file_name)) / 2 - 1))}",
-        file_name,
-        f"{'═' * int(np.ceil((len(header) - len(file_name)) / 2 - 1))}\n",
-    )
-    print(header)
-    print(separator)
-
-    for comp_name in component_names:
-        print(
-            build_table_row(
-                comp_name, all_parameters, component_data, param_widths, max_comp_width
-            )
-        )
-
-    print(f"{'═' * len(header)}")
+        print_single_core_level(fit_data, reference)

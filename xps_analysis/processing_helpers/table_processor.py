@@ -103,7 +103,7 @@ def group_rows_by_dataset(table_data, dataset_idx, tag_idx):
     # Preserve the original order of datasets instead of sorting
     result = {}
 
-    for core_level in set(k[1] for k in by_dataset_and_core.keys()):
+    for core_level in set(k[1] for k in by_dataset_and_core):
         result[core_level] = []
         for dataset in dataset_order:  # Use original order, not sorted
             key = (dataset, core_level)
