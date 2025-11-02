@@ -17,8 +17,7 @@ plot_spectrum : Plot XPS spectrum with optional residuals
 
 Notes
 -----
-All internal helper functions have been moved to the ``plot_helpers`` package
-for better organization and maintainability.
+
 """
 
 import matplotlib.pyplot as plt

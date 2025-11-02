@@ -20,8 +20,7 @@ get_core_levels : Get list of core levels from a report dictionary
 
 Notes
 -----
-Internal helper functions have been moved to the ``processing_helpers``
-package for better organization and maintainability.
+
 """
 
 import os
