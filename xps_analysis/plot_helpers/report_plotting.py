@@ -22,6 +22,59 @@ from .plot_rendering import (
 )
 
 
+def _normalize_at_conc_per_core(report_dict, core_data, col_full):
+    """Normalize atomic concentration values to sum to 100% per core level.
+
+    Parameters
+    ----------
+    report_dict : dict
+        The data dictionary to normalize (modified in place).
+    core_data : dict
+        Reference to the core data being plotted.
+    col_full : str
+        The full column name to normalize.
+
+    Returns
+    -------
+    dict
+        A copy of core_data with normalized atomic concentration values.
+    """
+    if col_full != "%At Conc":
+        return core_data
+
+    # Create a copy to avoid modifying the original
+    normalized_data = core_data.copy()
+
+    if "%At Conc" not in normalized_data:
+        return normalized_data
+
+    at_conc_data = np.array(normalized_data["%At Conc"], dtype=object)
+
+    # Normalize each measurement to sum to 100%
+    if at_conc_data.ndim > 1:
+        for measurement_idx in range(at_conc_data.shape[1]):
+            # Extract values for this measurement
+            values = []
+            indices = []
+            for comp_idx in range(at_conc_data.shape[0]):
+                val = at_conc_data[comp_idx, measurement_idx]
+                if isinstance(val, (int, float, np.floating)):
+                    values.append(val)
+                    indices.append(comp_idx)
+
+            # Normalize if we have valid numeric values
+            if values:
+                total = sum(values)
+                if total > 0:
+                    scale_factor = 100.0 / total
+                    for comp_idx, val in zip(indices, values):
+                        at_conc_data[comp_idx, measurement_idx] = val * scale_factor
+
+        normalized_data["%At Conc"] = at_conc_data
+
+    return normalized_data
+
+
 def configure_report_axes(ax, col_full, core_level):
     """Configure axis labels, title, and legend for report plot.
 
@@ -233,6 +286,9 @@ def plot_all_core_levels(
     # Get column name
     col_full = get_column_name(proc_kwargs.get("fit_param", "BE"))
 
+    # Check if we should normalize atomic concentration per core level
+    normalize_at_conc = proc_kwargs.get("normalize_at_conc_per_core", False)
+
     # Plot each core level
     for idx, core_level in enumerate(core_levels):
         current_ax = axes[idx]
@@ -242,6 +298,10 @@ def plot_all_core_levels(
         reference = proc_kwargs.get("reference", None)
         plot_dict = core_data
         plot_col = col_full
+
+        # Normalize atomic concentration per core level if requested
+        if normalize_at_conc and col_full == "%At Conc":
+            plot_dict = _normalize_at_conc_per_core(report_dict, core_data, col_full)
 
         # Convert to relative BE if needed
         if reference and "Binding Energy" in col_full:

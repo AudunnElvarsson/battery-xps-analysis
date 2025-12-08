@@ -18,15 +18,25 @@ def convert_all_vms(project_folder):
 def report_parameters(report_dict, save_param=None):
     """
     Plot the composition report from the specified file path and save figure.
+
+    Parameters
+    ----------
+    report_dict : dict
+        The report dictionary from read_report_file.
+    save_param : dict, optional
+        Save parameters for the figure.
+    normalize_per_core : bool, optional
+        If True, normalize atomic concentrations per core level (default False).
     """
     # Select which core levels to plot
-    selected_cores = ["F 1s", "O 1s", "C 1s"]
+    selected_cores = xp.get_core_levels(report_dict)
 
     proc_param = {
         "fit_param": "At Conc",
         "calculate": "difference",
         "reference": "",
-        "core_levels": selected_cores,  # Use plural "core_levels" for multiple
+        "core_levels": selected_cores,
+        "normalize_at_conc_per_core": True,
     }
     plot_param = {"linestyle": "-"}
 
@@ -102,6 +112,12 @@ def main():
 
         if run_plot_report:
             report_parameters(report_dict, save_param=save_param)
+
+    if run_plot_spectrum:
+        spectrum_dict = xp.read_spectrum_file(spectrum_file)
+        spectrum_parameters(spectrum_dict, save_param=save_param)
+
+    plt.show()
 
     if run_plot_spectrum:
         spectrum_dict = xp.read_spectrum_file(spectrum_file)

@@ -78,6 +78,11 @@ def plot_report(
         - 'reference' (str): Component label for relative BE plotting (e.g.,
           "A", "C"). Only applies when fit_param='BE'. Plots relative binding
           energy with respect to the first value of the reference component.
+        - 'normalize_at_conc_per_core' (bool): When plotting multiple core
+          levels with atomic concentration (default False), if True the atomic
+          concentrations for each core level will be normalized separately so
+          components within each core level sum to 100%. If False, components
+          across all core levels sum to 100%.
         - 'core_levels' (str, list of str, or None): For multi-core format,
           specify which core levels to plot:
           * Single string "C 1s" - plots only that core level
