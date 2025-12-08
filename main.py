@@ -32,8 +32,8 @@ def report_parameters(report_dict, save_param=None):
     selected_cores = xp.get_core_levels(report_dict)
 
     proc_param = {
-        "fit_param": "At Conc",
-        "calculate": "difference",
+        "fit_param": "BE",
+        "calculate": "",
         "reference": "",
         "core_levels": selected_cores,
         "normalize_at_conc_per_core": True,
@@ -57,8 +57,19 @@ def report_parameters(report_dict, save_param=None):
 def spectrum_parameters(spectrum_dict, save_param=None):
     """
     Plot the spectrum from the specified dictionary and save figure.
+
+    Parameters
+    ----------
+    spectrum_dict : dict
+        The spectrum dictionary from read_spectrum_file.
+    save_param : dict, optional
+        Save parameters for the figure.
     """
-    proc_param = {"x_axis": "BE", "normalised_residual": False}
+    proc_param = {
+        "x_axis": "BE",
+        "normalised_residual": False,
+        "plot_items": None,  # Control what to plot
+    }
     plot_param = {"linestyle": "-"}
 
     fig, axes = plt.subplots(
@@ -84,7 +95,7 @@ def main():
     """
     # Flags to control execution
     run_convert_all_vms_in_project = False
-    run_print_report = True
+    run_print_report = False
     run_plot_report = True
     run_plot_spectrum = False
 
@@ -112,12 +123,6 @@ def main():
 
         if run_plot_report:
             report_parameters(report_dict, save_param=save_param)
-
-    if run_plot_spectrum:
-        spectrum_dict = xp.read_spectrum_file(spectrum_file)
-        spectrum_parameters(spectrum_dict, save_param=save_param)
-
-    plt.show()
 
     if run_plot_spectrum:
         spectrum_dict = xp.read_spectrum_file(spectrum_file)

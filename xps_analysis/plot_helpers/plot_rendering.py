@@ -95,7 +95,7 @@ def update_plot_params(defaults, user_kwargs):
     return params
 
 
-def should_plot_key(key, x_axis, normalised_residual):
+def should_plot_key(key, x_axis, normalised_residual, plot_items=None):
     """Decide whether a key from a spectrum mapping should be plotted.
 
     Parameters
@@ -106,21 +106,52 @@ def should_plot_key(key, x_axis, normalised_residual):
         The axis currently used for x data (``'BE'`` or ``'KE'``).
     normalised_residual : bool
         Whether normalised residuals are being plotted; affects.
+    plot_items : list of str or None, optional
+        List of item types to include in the plot. Valid values are:
+        'measured', 'background', 'components', 'envelope', 'residual'.
+        If None (default), all items are included.
 
     Returns
     -------
     bool
         True if the key should be plotted as a data series, False otherwise.
     """
+    # Default: plot all items when plot_items not specified
+    if plot_items is None:
+        plot_items = ["measured", "background", "components", "envelope", "residual"]
+
+    # Normalize plot_items to lowercase
+    plot_items_lower = [item.lower() for item in plot_items]
+
     if key in (x_axis, "KE", "BE"):
         return False
     if key in ("File Name", "Sample", "Core Level"):
         return False
-    if key == "Normalised Residual" and not normalised_residual:
-        return False
-    if key == "Residual" and normalised_residual:
-        return False
-    return True
+
+    # Check residual keys
+    if key in ("Normalised Residual", "Residual"):
+        if "residual" not in plot_items_lower:
+            return False
+        if key == "Normalised Residual" and not normalised_residual:
+            return False
+        if key == "Residual" and normalised_residual:
+            return False
+        return True
+
+    # Check measured data
+    if key == "Measured":
+        return "measured" in plot_items_lower
+
+    # Check background
+    if key == "Background":
+        return "background" in plot_items_lower
+
+    # Check for envelope
+    if key == "Envelope":
+        return "envelope" in plot_items_lower
+
+    # Everything else is treated as a component
+    return "components" in plot_items_lower
 
 
 def convert_to_relative_be(report_dict, col_full, reference):
@@ -250,6 +281,9 @@ def plot_spectrum_series(spectrum_dict, ax, x_values, plot_options):
         - 'x_axis' (str): Selected axis name ('BE' or 'KE').
         - 'params' (dict): Plotting kwargs forwarded to Axes.plot.
         - 'normalised_residual' (bool): Whether to plot normalised residuals.
+        - 'plot_items' (list of str or None): Item types to include in plot.
+          Valid values: 'measured', 'background', 'components', 'envelope',
+          'residual'. If None, defaults to all items.
 
     Returns
     -------
@@ -260,11 +294,12 @@ def plot_spectrum_series(spectrum_dict, ax, x_values, plot_options):
     x_axis = plot_options["x_axis"]
     params = plot_options["params"]
     normalised_residual = plot_options.get("normalised_residual", False)
+    plot_items = plot_options.get("plot_items", None)
 
     handles = []
     labels = []
     for key, values in spectrum_dict.items():
-        if not should_plot_key(key, x_axis, normalised_residual):
+        if not should_plot_key(key, x_axis, normalised_residual, plot_items):
             continue
         target_ax = select_target_axis(ax, key)
         try:

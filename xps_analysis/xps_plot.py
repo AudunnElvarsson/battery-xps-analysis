@@ -244,6 +244,9 @@ def plot_spectrum(
           or 'KE' (kinetic energy).
         - 'normalised_residual' (bool): Whether to plot normalised residual
           instead of raw residual (default False).
+        - 'plot_items' (list of str or None): Item types to include in the plot.
+          Valid values: 'measured', 'background', 'components', 'envelope',
+          'residual'. If None (default), plots all items.
     plot_kwargs : dict or None, optional
         Styling arguments forwarded to ``matplotlib.axes.Axes.plot`` for data
         series. These override module defaults. Supports both full and
@@ -285,10 +288,44 @@ def plot_spectrum(
     proc_kwargs = proc_kwargs or {}
     save_kwargs = save_kwargs or {}
     x_axis = proc_kwargs.get("x_axis", "BE")
+    normalised_residual = proc_kwargs.get("normalised_residual", False)
+    plot_items = proc_kwargs.get("plot_items", None)
 
     if spectrum_dict is None:
         print("No data to plot.")
         return
+
+    # Determine if residuals will be plotted
+    # Default: plot all items when plot_items not specified
+    if plot_items is None:
+        plot_items_to_check = [
+            "measured",
+            "background",
+            "components",
+            "envelope",
+            "residual",
+        ]
+    else:
+        plot_items_to_check = [item.lower() for item in plot_items]
+
+    will_plot_residual = "residual" in plot_items_to_check
+
+    # Create axes if needed: 2 axes if plotting residuals, 1 if not
+    if ax is None and will_plot_residual:
+        # Create figure with 2 axes for residuals
+        fig, ax = plt.subplots(
+            2,
+            1,
+            figsize=(8, 6),
+            gridspec_kw={"height_ratios": [1, 8], "hspace": 0},
+        )
+        try:
+            fig.set_layout_engine("tight")
+        except AttributeError:
+            try:
+                fig.set_tight_layout(True)
+            except AttributeError:
+                pass
 
     # Prepare axes
     fig, ax, main_ax, plot_here = ensure_axes_and_main(ax)
@@ -304,6 +341,7 @@ def plot_spectrum(
             "x_axis": x_axis,
             "params": plot_params,
             "normalised_residual": proc_kwargs.get("normalised_residual", False),
+            "plot_items": proc_kwargs.get("plot_items", None),
         },
     )
 
