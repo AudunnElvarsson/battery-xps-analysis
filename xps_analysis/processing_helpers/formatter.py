@@ -121,7 +121,12 @@ def build_table_row(
 
 
 def print_single_core_level(
-    fit_data, reference="A", file_name_override=None, core_level_override=None
+    fit_data,
+    reference="A",
+    file_name_override=None,
+    core_level_override=None,
+    show_main_title=True,
+    show_subtitle=False,
 ):
     """Print formatted table of average values for a single core level.
 
@@ -145,6 +150,12 @@ def print_single_core_level(
     core_level_override : str or None, optional
         Override for core level name in title. If None, uses
         fit_data['Core Level'] or 'Unknown'.
+    show_main_title : bool, optional
+        If True (default), print the main title with file name.
+        Set to False when printing multiple core levels to avoid repetition.
+    show_subtitle : bool, optional
+        If True, print core level as a subtitle instead of in main title.
+        Used when printing multiple core levels (default False).
 
     Returns
     -------
@@ -207,22 +218,46 @@ def print_single_core_level(
     )
     header, separator = build_table_header(max_comp_width, all_parameters, param_widths)
 
-    # Print table
+    # Print table with appropriate title/subtitle
     core_level = core_level_override or fit_data.get("Core Level") or "Unknown"
     # Prefer provided file name (from parent in multi-core), else from this dict
     display_file = file_name_override or fit_data.get("File Name", "Unknown file")
-    file_name = f"File: {display_file}"
-    title = f"Average values from fit report - {core_level}"
-    print(
-        f"{'═' * int(np.floor((len(header) - len(title)) / 2 - 1))}",
-        title,
-        f"{'═' * int(np.ceil((len(header) - len(title)) / 2 - 1))}",
-    )
-    print(
-        f"{'═' * int(np.floor((len(header) - len(file_name)) / 2 - 1))}",
-        file_name,
-        f"{'═' * int(np.ceil((len(header) - len(file_name)) / 2 - 1))}\n",
-    )
+
+    if show_main_title and not show_subtitle:
+        # Single core level or selected core level - include core level in title
+        title = f"Average values from fit report - {core_level}"
+        file_name_line = f"File: {display_file}"
+        print(
+            f"{'═' * int(np.floor((len(header) - len(title)) / 2 - 1))}",
+            title,
+            f"{'═' * int(np.ceil((len(header) - len(title)) / 2 - 1))}",
+        )
+        print(
+            f"{'═' * int(np.floor((len(header) - len(file_name_line)) / 2 - 1))}",
+            file_name_line,
+            f"{'═' * int(np.ceil((len(header) - len(file_name_line)) / 2 - 1))}\n",
+        )
+    elif show_main_title and show_subtitle:
+        # Multi-core format, first table - print main title only
+        main_title = "Average values from fit report"
+        file_name_line = f"File: {display_file}"
+        print(
+            f"{'═' * int(np.floor((len(header) - len(main_title)) / 2 - 1))}",
+            main_title,
+            f"{'═' * int(np.ceil((len(header) - len(main_title)) / 2 - 1))}",
+        )
+        print(
+            f"{'═' * int(np.floor((len(header) - len(file_name_line)) / 2 - 1))}",
+            file_name_line,
+            f"{'═' * int(np.ceil((len(header) - len(file_name_line)) / 2 - 1))}",
+        )
+
+    if show_subtitle:
+        # Print core level as subtitle
+        subtitle = f"Core Level: {core_level}"
+        print(f"\n{subtitle}")
+        print(f"{'-' * len(subtitle)}")
+
     print(header)
     print(separator)
 

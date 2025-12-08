@@ -23,7 +23,7 @@ def report_parameters(report_dict, save_param=None):
     selected_cores = ["F 1s", "O 1s", "C 1s"]
 
     proc_param = {
-        "fit_param": "BE",
+        "fit_param": "At Conc",
         "calculate": "difference",
         "reference": "",
         "core_levels": selected_cores,  # Use plural "core_levels" for multiple
@@ -84,7 +84,9 @@ def main():
     )
     experiment_folder = r"250221_Gr_XPS_beam_damage_and_neutralizers/3_output/"
     save_folder = project_folder + experiment_folder
-    report_file = save_folder + r"5_e_beam_unwashed_before_after_report_F1s_O1s_C1s.txt"
+    report_file = (
+        save_folder + r"5_e_beam_unwashed_before_after_comp_report_F1s_O1s_C1s.txt"
+    )
     spectrum_file = save_folder + r"2_beam_damage_unwashed_spectrum_C1s.txt"
 
     save_param = {"save_fig": False, "format": "png", "save_folder": save_folder}

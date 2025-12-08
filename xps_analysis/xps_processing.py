@@ -364,7 +364,7 @@ def print_report(fit_data, reference="A", core_level=None):
         parent_file_name = fit_data.get("File Name")
 
         if core_level:
-            # Print only the selected core level
+            # Print only the selected core level with main title
             if core_level not in core_levels:
                 print(f"Core level '{core_level}' not found. Available: {core_levels}")
                 return
@@ -373,14 +373,18 @@ def print_report(fit_data, reference="A", core_level=None):
                 reference,
                 parent_file_name,
                 core_level_override=core_level,
+                show_main_title=True,
             )
         else:
-            # Print all core levels
+            # Print main title once, then all core levels with subtitles
             for idx, cl in enumerate(core_levels):
-                if idx > 0:
-                    print("\n")  # Add spacing between core levels
                 print_single_core_level(
-                    fit_data[cl], reference, parent_file_name, core_level_override=cl
+                    fit_data[cl],
+                    reference,
+                    parent_file_name,
+                    core_level_override=cl,
+                    show_main_title=(idx == 0),
+                    show_subtitle=True,
                 )
     else:
         # Single-core format (original behavior)
