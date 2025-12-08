@@ -4,8 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "battery-xps-analysis"
-version = "1.4.6"
+version = "1.4.7"
 description = "This package provides tools for X-ray Photoelectron Spectroscopy (XPS) analysis of battery materials."
+authors = [
+    { name = "Audunn Elvarsson" },
+    { email = "audunn.elvarsson@gmail.com" },
+]
+license = "CC0-1.0"
+keywords = ["xps", "spectroscopy", "battery", "analysis", "materials"]
 readme = "README.md"
 requires-python = ">=3.13.1"
 dependencies = [
