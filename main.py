@@ -33,8 +33,8 @@ def report_parameters(report_dict, save_param=None):
 
     proc_param = {
         "fit_param": "BE",
-        "calculate": "",
-        "reference": {"F 1s": "PFx", "O 1s": "B", "C 1s": "A"},
+        "calculate": "average",
+        #        "reference": {"F 1s": "PFx", "O 1s": "B", "C 1s": "A"},
         "core_levels": selected_cores,
         "show_labels": True,
         "normalize_at_conc_per_core": True,
@@ -96,7 +96,7 @@ def main():
     """
     # Flags to control execution
     run_convert_all_vms_in_project = False
-    run_print_report = False
+    run_print_report = True
     run_plot_report = True
     run_plot_spectrum = False
 
@@ -107,7 +107,7 @@ def main():
     experiment_folder = r"250221_Gr_XPS_beam_damage_and_neutralizers/3_output/"
     save_folder = project_folder + experiment_folder
     report_file = (
-        save_folder + r"5_e_beam_unwashed_before_after_comp_report_F1s_O1s_C1s.txt"
+        save_folder + r"2_beam_damage_unwashed_comp_report_F1s_O1s_C1s_P2p_Li1s.txt"
     )
     spectrum_file = save_folder + r"2_beam_damage_unwashed_spectrum_C1s.txt"
 

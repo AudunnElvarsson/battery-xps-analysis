@@ -234,11 +234,22 @@ def plot_report_series(report_dict, ax, col_full, params, plot_options=None):
     y_data = np.array(report_dict.get(col_full), dtype=object)
     show_labels = plot_options.get("show_labels", False)
 
+    # Check if data is empty
+    if y_data.shape[0] == 0:
+        return
+
     # Find maximum label length for alignment
     max_len = max(
         len(_get_comp_label(names, i, show_labels, comp_labels))
         for i in range(y_data.shape[0])
     )
+
+    # Detect doublet groups for color coordination
+    doublet_info = _get_doublet_styling_info(names)
+
+    # Track colors for doublet groups
+    colors_used = {}
+    color_idx = 0
 
     # Plot each component
     for i in range(y_data.shape[0]):
@@ -269,6 +280,29 @@ def plot_report_series(report_dict, ax, col_full, params, plot_options=None):
                 max_len
             )
 
+        # Apply doublet styling if this component is part of a doublet
+        plot_params = params.copy()
+        if i in doublet_info:
+            base_name, is_first = doublet_info[i]
+
+            # Get or assign color for this doublet group
+            if base_name not in colors_used:
+                # Use matplotlib color cycle
+                colors_used[base_name] = f"C{color_idx}"
+                color_idx += 1
+
+            plot_params["color"] = colors_used[base_name]
+
+            # Different markers/linestyles for 3/2 and 1/2 components
+            if is_first:
+                # 3/2 component: solid line with circle marker
+                plot_params["linestyle"] = "-"
+                plot_params["marker"] = "o"
+            else:
+                # 1/2 component: dashed line with square marker
+                plot_params["linestyle"] = "--"
+                plot_params["marker"] = "s"
+
         # Plot the component series with average line
         _plot_component_series(
             ax,
@@ -277,7 +311,7 @@ def plot_report_series(report_dict, ax, col_full, params, plot_options=None):
                 "y_vals": y_data[i],
                 "legend_text": legend_text,
             },
-            params,
+            plot_params,
             {
                 "stat_value": stat_value,
                 "calculate": calc_mode,
@@ -464,6 +498,42 @@ def _get_comp_label(names, index, show_label=False, comp_labels=None):
         label_str = f"{comp_label}: {label_str}"
 
     return label_str
+
+
+def _get_doublet_styling_info(names):
+    """Detect doublet pairs and return styling information.
+
+    Returns a dict mapping component index to (base_name, is_first) tuple,
+    where base_name identifies the doublet group and is_first indicates
+    if it's the 3/2 (True) or 1/2 (False) component.
+    """
+    doublet_info = {}
+
+    # Extract name strings
+    if names.ndim > 1:
+        name_strs = [str(names[i, 0]) for i in range(names.shape[0])]
+    else:
+        name_strs = [str(names[i]) for i in range(names.shape[0])]
+
+    # Find doublet pairs (names ending with (3/2) and (1/2))
+    doublet_groups = {}
+    for i, name in enumerate(name_strs):
+        if " (3/2)" in name:
+            base_name = name.replace(" (3/2)", "")
+            doublet_groups[base_name] = doublet_groups.get(base_name, {})
+            doublet_groups[base_name]["first"] = i
+        elif " (1/2)" in name:
+            base_name = name.replace(" (1/2)", "")
+            doublet_groups[base_name] = doublet_groups.get(base_name, {})
+            doublet_groups[base_name]["second"] = i
+
+    # Build the output dict for complete pairs only
+    for base_name, indices in doublet_groups.items():
+        if "first" in indices and "second" in indices:
+            doublet_info[indices["first"]] = (base_name, True)
+            doublet_info[indices["second"]] = (base_name, False)
+
+    return doublet_info
 
 
 def _format_ratio_legend(names, comp_labels, index, col_full, show_labels):

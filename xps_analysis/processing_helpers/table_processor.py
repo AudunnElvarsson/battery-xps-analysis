@@ -46,7 +46,7 @@ def clean_header(header_line):
 
 
 def has_dataset_column(header):
-    """Check if header contains 'Data Set' column indicating multi-core format.
+    """Check if header contains 'Data Set' or 'Iteration' column indicating multi-core format.
 
     Parameters
     ----------
@@ -56,16 +56,96 @@ def has_dataset_column(header):
     Returns
     -------
     bool
-        True if 'Data Set' column is present, False otherwise.
+        True if 'Data Set' or 'Iteration' column is present, False otherwise.
     """
-    return "Data Set" in header
+    return "Data Set" in header or "Iteration" in header
+
+
+def label_spin_orbit_doublets(core_data):
+    """Add spin-orbit suffixes to duplicate component names.
+
+    For components with identical names (e.g., P-F appearing twice for P 2p),
+    this adds suffixes like " (3/2)" and " (1/2)" to distinguish the
+    spin-orbit components. The first occurrence is the more intense 3/2 peak.
+
+    Parameters
+    ----------
+    core_data : dict
+        Core level data dictionary with 'Name' field.
+
+    Returns
+    -------
+    dict
+        Modified core_data with updated Name field and new 'Doublet Group' field.
+    """
+    if "Name" not in core_data:
+        return core_data
+
+    name_array = np.array(core_data["Name"], dtype=object)
+    if name_array.size == 0:
+        return core_data
+
+    # Extract component names (handle 2D format)
+    if name_array.ndim == 2:
+        names = [str(name_array[i, 0]) for i in range(name_array.shape[0])]
+    else:
+        names = [str(name_array[i]) for i in range(name_array.shape[0])]
+
+    # Find duplicates and add suffixes
+    name_counts = {}
+    doublet_groups = []  # Track which components belong to same doublet
+
+    for i, name in enumerate(names):
+        if name in name_counts:
+            # This is a duplicate - mark both as doublet
+            first_idx = name_counts[name]["indices"][0]
+            occurrence = len(name_counts[name]["indices"])
+
+            # Add suffix to first occurrence if not already done
+            if name_counts[name]["count"] == 1:
+                names[first_idx] = f"{name} (3/2)"
+                doublet_groups.append(name)  # Store base name
+
+            # Add suffix to current occurrence
+            if occurrence == 1:
+                names[i] = f"{name} (1/2)"
+            else:
+                # Handle more than 2 components with same name (unlikely)
+                names[i] = f"{name} ({occurrence})"
+
+            name_counts[name]["indices"].append(i)
+            name_counts[name]["count"] += 1
+        else:
+            name_counts[name] = {"count": 1, "indices": [i]}
+
+    # Update the Name array with suffixes
+    if name_array.ndim == 2:
+        for i, new_name in enumerate(names):
+            name_array[i, 0] = new_name
+    else:
+        name_array = np.array(names, dtype=object)
+
+    core_data["Name"] = name_array
+
+    # Store doublet grouping information
+    if doublet_groups:
+        # Create array indicating which components belong to same doublet
+        doublet_group_array = np.array([""] * len(names), dtype=object)
+        for base_name in set(doublet_groups):
+            for i, name in enumerate(names):
+                if base_name in name and ("(3/2)" in name or "(1/2)" in name):
+                    doublet_group_array[i] = base_name
+        core_data["Doublet Group"] = doublet_group_array
+
+    return core_data
 
 
 def group_rows_by_dataset(table_data, dataset_idx, tag_idx):
-    """Group table rows by Data Set number and then by Tag (core level).
+    """Group table rows by Data Set/Iteration number and then by Tag (core level).
 
-    This function handles the new multi-core-level format where measurements
-    are identified by the "Data Set" column and core levels by the "Tag" column.
+    This function handles the multi-core-level format where measurements
+    are identified by the "Data Set" or "Iteration" column and core levels
+    by the "Tag" column.
 
     Parameters
     ----------
@@ -239,7 +319,18 @@ def table_to_dict_exclude_columns(groups, header, exclude_indices):
 
     result = {h: [] for h in filtered_header}
     for group in groups:
-        arr = np.array(group)
+        arr = np.array(group, dtype=object)
+        # Ensure arr has enough columns - pad with empty strings if needed
+        if arr.ndim == 1:
+            # Single row - reshape to 2D
+            arr = arr.reshape(1, -1)
+        if arr.shape[1] < len(header):
+            # Pad with empty strings if there are missing columns
+            padding = np.full(
+                (arr.shape[0], len(header) - arr.shape[1]), "", dtype=object
+            )
+            arr = np.concatenate([arr, padding], axis=1)
+
         # Process each column, skipping excluded indices
         for orig_idx, h in enumerate(header):
             if orig_idx in exclude_indices:
@@ -262,9 +353,9 @@ def parse_report_rows(lines, header_idx, header, raw_header):
     corresponding duplicate value is removed from parsed rows so the row length
     matches the cleaned ``header``.
 
-    For multi-core format (with "Data Set" column), empty leading columns
-    are preserved to maintain alignment, and filled with the most recent
-    data set number.
+    For multi-core format (with "Data Set" or "Iteration" column), empty leading
+    columns are preserved to maintain alignment, and filled with the most recent
+    data set/iteration number.
 
     Parameters
     ----------
@@ -284,7 +375,7 @@ def parse_report_rows(lines, header_idx, header, raw_header):
     """
     rows = []
     name_indices = [i for i, h in enumerate(raw_header) if h == "Name"]
-    has_dataset = "Data Set" in header
+    has_dataset = "Data Set" in header or "Iteration" in header
     current_dataset = None
 
     for line in lines[header_idx + 1 :]:

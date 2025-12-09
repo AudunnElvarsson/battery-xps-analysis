@@ -83,7 +83,14 @@ def process_all_parameters(fit_data, component_names):
     numeric_parameters, string_parameters = [], []
     component_data = {comp: {} for comp in component_names}
 
-    skip_keys = {"Constr.", "File Name", "Name", "Area/(RSF*T*MFP)", "Core Level"}
+    skip_keys = {
+        "Constr.",
+        "File Name",
+        "Name",
+        "Area/(RSF*T*MFP)",
+        "Core Level",
+        "Doublet Group",
+    }
     for key, data_array in fit_data.items():
         if any(skip in key for skip in skip_keys) or not isinstance(
             data_array, np.ndarray

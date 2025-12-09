@@ -67,6 +67,7 @@ from .table_processor import (
     table_to_dict,
     table_to_dict_exclude_columns,
     parse_report_rows,
+    label_spin_orbit_doublets,
 )
 from .data_analyzer import (
     process_parameter,

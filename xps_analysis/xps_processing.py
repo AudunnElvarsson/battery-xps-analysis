@@ -39,6 +39,7 @@ from .processing_helpers import (
     parse_report_rows,
     add_file_metadata,
     print_single_core_level,
+    label_spin_orbit_doublets,
 )
 
 
@@ -80,13 +81,20 @@ def read_report_file(file_path):
     with open(file_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
-    # Find header line - check for new format (Data Set) or old format (Name)
+    # Find header line - check for multi-core format (Data Set or Iteration) or single-core format (Name)
+    # First try Data Set format
     header_line, header_idx = find_header(
         lines, ("Data Set",), required_substring="Comp Label"
     )
 
     if header_idx is None:
-        # Fall back to old format
+        # Try Iteration format
+        header_line, header_idx = find_header(
+            lines, ("Iteration",), required_substring="Comp Label"
+        )
+
+    if header_idx is None:
+        # Fall back to old single-core format
         header_line, header_idx = find_header(
             lines, ("Name",), required_substring="Comp Label"
         )
@@ -102,10 +110,20 @@ def read_report_file(file_path):
     # Parse table rows
     table_rows = parse_report_rows(lines, header_idx, header, raw_header)
 
-    # Check if this is the new multi-core format
+    # Check if this is the multi-core format (Data Set or Iteration column)
     if has_dataset_column(header):
         # Multi-core level format
-        dataset_idx = header.index("Data Set")
+        # Get the dataset column index - could be "Data Set" or "Iteration"
+        if "Data Set" in header:
+            dataset_idx = header.index("Data Set")
+        elif "Iteration" in header:
+            dataset_idx = header.index("Iteration")
+        else:
+            # This shouldn't happen if has_dataset_column returned True
+            print(
+                "Error: Multi-core format detected but no Data Set/Iteration column found."
+            )
+            return None
         tag_idx = header.index("Tag")
 
         # Group by dataset and core level
@@ -120,6 +138,8 @@ def read_report_file(file_path):
             result_dict[core_level] = table_to_dict_exclude_columns(
                 groups, header, exclude_cols
             )
+            # Label spin-orbit doublets
+            result_dict[core_level] = label_spin_orbit_doublets(result_dict[core_level])
 
         # Add metadata (use first core level as default for backwards compatibility)
         first_core = next(iter(result_dict.keys()))
@@ -131,6 +151,8 @@ def read_report_file(file_path):
         name_idx = header.index("Comp Label")
         groups = group_rows_by_name(table_rows, name_idx)
         result_dict = table_to_dict(groups, header)
+        # Label spin-orbit doublets
+        result_dict = label_spin_orbit_doublets(result_dict)
         add_file_metadata(result_dict, file_path)
 
     return result_dict
