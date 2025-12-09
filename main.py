@@ -34,8 +34,9 @@ def report_parameters(report_dict, save_param=None):
     proc_param = {
         "fit_param": "BE",
         "calculate": "",
-        "reference": "",
+        "reference": {"F 1s": "PFx", "O 1s": "B", "C 1s": "A"},
         "core_levels": selected_cores,
+        "show_labels": True,
         "normalize_at_conc_per_core": True,
     }
     plot_param = {"linestyle": "-"}

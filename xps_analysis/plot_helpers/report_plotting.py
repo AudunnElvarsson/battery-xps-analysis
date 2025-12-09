@@ -75,6 +75,129 @@ def _normalize_at_conc_per_core(report_dict, core_data, col_full):
     return normalized_data
 
 
+def _safe_ratio(numerator, denominator):
+    """Compute a safe ratio, returning NaN when division is invalid."""
+    if not isinstance(numerator, (int, float, np.integer, np.floating)):
+        return np.nan
+    if denominator is None or not isinstance(
+        denominator, (int, float, np.integer, np.floating)
+    ):
+        return np.nan
+    if denominator == 0:
+        return np.nan
+    return float(numerator) / float(denominator)
+
+
+def _find_component_index(core_data, component_label):
+    """Return the row index for a given component label or name.
+
+    Searches both 'Comp Label' and 'Name' fields to find a match.
+    Component labels are typically single letters (A, B, C), while
+    component names are chemical species (LiF, PFx, C-C / C-H).
+    """
+    if not component_label:
+        return 0
+
+    # Try Comp Label first (typically single letters like A, B, C)
+    comp_labels = core_data.get("Comp Label")
+    if comp_labels is not None:
+        comp_labels = np.array(comp_labels, dtype=object)
+        for idx in range(comp_labels.shape[0]):
+            label = comp_labels[idx, 0] if comp_labels.ndim > 1 else comp_labels[idx]
+            if str(label) == str(component_label):
+                return idx
+
+    # Try Name field (chemical species names)
+    names = core_data.get("Name")
+    if names is not None:
+        names = np.array(names, dtype=object)
+        for idx in range(names.shape[0]):
+            name = names[idx, 0] if names.ndim > 1 else names[idx]
+            if str(name) == str(component_label):
+                return idx
+
+    return None
+
+
+def _get_reference_area_series(core_data, col_full, component_label=None):
+    """Return the reference component's area series for ratio calculations."""
+    if core_data is None or col_full not in core_data:
+        return None
+
+    area_array = np.array(core_data.get(col_full), dtype=object)
+    if area_array.size == 0:
+        return None
+
+    ref_idx = _find_component_index(core_data, component_label)
+    if ref_idx is None:
+        return None
+
+    if area_array.ndim == 1:
+        return area_array[ref_idx] if ref_idx < area_array.shape[0] else None
+
+    if ref_idx >= area_array.shape[0]:
+        return None
+
+    return area_array[ref_idx]
+
+
+def _apply_area_ratio(core_data, col_full, reference_series, reference_label=None):
+    """Create a copy of core_data with area values converted to ratios.
+
+    The reference component is excluded from the output since its ratio is always 1.
+    """
+    if reference_series is None or col_full not in core_data:
+        return core_data, col_full
+
+    area_array = np.array(core_data.get(col_full), dtype=object)
+    ref_array = np.array(reference_series, dtype=object).flatten()
+
+    # Find the reference component index to exclude it
+    ref_idx = _find_component_index(core_data, reference_label)
+
+    # Get the actual component name (not label) for the reference
+    ref_component_name = reference_label
+    if ref_idx is not None:
+        names = core_data.get("Name")
+        if names is not None:
+            names_array = np.array(names, dtype=object)
+            if names_array.ndim > 1 and names_array.shape[1] > 1:
+                # Use the component name (column 1) instead of label (column 0)
+                ref_component_name = names_array[ref_idx, 1]
+            elif names_array.ndim == 1:
+                ref_component_name = names_array[ref_idx]
+
+    if area_array.ndim == 1:
+        ratio_array = np.empty_like(area_array, dtype=object)
+        for j in range(area_array.shape[0]):
+            ref_val = ref_array[j] if j < ref_array.shape[0] else None
+            ratio_array[j] = _safe_ratio(area_array[j], ref_val)
+    else:
+        ratio_array = np.empty_like(area_array, dtype=object)
+        for i in range(area_array.shape[0]):
+            for j in range(area_array.shape[1]):
+                ref_val = ref_array[j] if j < ref_array.shape[0] else None
+                ratio_array[i, j] = _safe_ratio(area_array[i, j], ref_val)
+
+    new_col = "Area Ratio"
+    if ref_component_name:
+        new_col = f"Area Ratio (ref comp {ref_component_name})"
+
+    ratio_dict = core_data.copy()
+    ratio_dict[new_col] = ratio_array
+
+    # Remove the reference component from the output
+    if ref_idx is not None:
+        for key in ratio_dict:
+            if key in ["Name", "Comp Label", new_col, col_full]:
+                arr = np.array(ratio_dict[key], dtype=object)
+                if arr.ndim > 0 and arr.shape[0] > ref_idx:
+                    # Remove the reference component row
+                    ratio_dict[key] = np.delete(arr, ref_idx, axis=0)
+
+    return ratio_dict, new_col
+
+
 def configure_report_axes(ax, col_full, core_level):
     """Configure axis labels, title, and legend for report plot.
 
@@ -94,6 +217,11 @@ def configure_report_axes(ax, col_full, core_level):
     """
     swap_axes = "Binding Energy" in col_full
 
+    # Simplify area ratio label to just "Area Ratio"
+    y_label = col_full
+    if col_full.startswith("Area Ratio (ref comp "):
+        y_label = "Area Ratio"
+
     if swap_axes:
         ax.set_xlabel(col_full)
         ax.set_ylabel("Experimental Variable")
@@ -101,7 +229,7 @@ def configure_report_axes(ax, col_full, core_level):
         ax.invert_yaxis()
     else:
         ax.set_xlabel("Experimental Variable")
-        ax.set_ylabel(col_full)
+        ax.set_ylabel(y_label)
 
     ax.set_title(core_level)
     legend = ax.legend()
@@ -116,6 +244,7 @@ def plot_single_core_level(
     plot_kwargs,
     save_kwargs,
     core_level_override=None,
+    ratio_reference_core_data=None,
 ):
     """Plot a single core level's fit report data.
 
@@ -132,8 +261,17 @@ def plot_single_core_level(
     proc_kwargs : dict
         Processing options. Supported keys:
         - 'fit_param' (str): Parameter to plot (default 'BE').
-        - 'calculate' (str): Display statistic ('average' or 'difference').
-        - 'reference' (str): Component label for relative BE plotting.
+        - 'calculate' (str or None): Display statistic. 'average' shows mean,
+            'difference' shows last - first, 'ratio' shows mean area ratio,
+            None/empty disables statistics/legend.
+        - 'reference' (str or dict): Component label/name for relative BE plotting
+            and area ratio calculations. Can be component label (e.g., 'A') or
+            component name (e.g., 'LiF'). If str, applies to all core levels; if
+            dict, maps core level -> component label/name (e.g., {"C 1s": "A",
+            "O 1s": "LiF"}). For area ratios, defaults to each core's first
+            component if not specified.
+        - 'show_labels' (bool): If True, prepend component labels (e.g., "A", "B")
+            to component names in legend (default False).
     plot_kwargs : dict or None
         Plot styling options forwarded to matplotlib plot.
     save_kwargs : dict
@@ -145,6 +283,9 @@ def plot_single_core_level(
     core_level_override : str or None, optional
         Override for core level name in title. If None, uses value from
         report_dict['Core Level'] or 'Unknown'.
+    ratio_reference_core_data : dict or None, optional
+        Core level data to use as reference when calculate='ratio' and
+        fit_param='Area'. Defaults to the current core level data.
 
     Returns
     -------
@@ -152,15 +293,57 @@ def plot_single_core_level(
     """
     fig, ax, main_ax, plot_here = ensure_axes_and_main(ax)
 
-    # Get column name and convert to relative BE if needed
+    calculate_mode = proc_kwargs.get("calculate", "average")
+    core_level_name = core_level_override or report_dict.get("Core Level") or "Unknown"
+    if isinstance(core_level_name, (list, tuple, np.ndarray)):
+        core_level_name = core_level_name[0] if len(core_level_name) else "Unknown"
+
+    # Get column name and reference
     col_full = get_column_name(proc_kwargs.get("fit_param", "BE"))
     reference = proc_kwargs.get("reference", None)
     plot_dict = report_dict
 
+    # Convert areas to ratios when requested
+    if calculate_mode == "ratio" and col_full == "Raw Area":
+        # Resolve reference component label (per-core mapping or global string)
+        if isinstance(reference, dict):
+            ref_component_label = reference.get(core_level_name, None)
+        else:
+            ref_component_label = reference
+
+        ratio_base = ratio_reference_core_data or report_dict
+        ratio_series = _get_reference_area_series(
+            ratio_base, col_full, ref_component_label
+        )
+
+        if ratio_series is None:
+            print(
+                f"Warning: Unable to compute area ratio for {core_level_name}; using raw areas instead."
+            )
+        else:
+            # Use provided reference or default to first component
+            ref_label = ref_component_label
+            if not ref_label:
+                names = report_dict.get("Name") or report_dict.get("Comp Label")
+                names = np.array(names, dtype=object) if names is not None else None
+                if names is not None and names.shape[0] > 0:
+                    ref_label = str(names[0, 0] if names.ndim > 1 else names[0])
+                else:
+                    ref_label = "?"
+            plot_dict, col_full = _apply_area_ratio(
+                report_dict, col_full, ratio_series, ref_label
+            )
+
+    # Convert to relative BE if requested
     if reference and "Binding Energy" in col_full:
-        plot_dict = convert_to_relative_be(report_dict, col_full, reference)
-        if plot_dict is not report_dict:
-            col_full = "Relative Binding Energy (eV)"
+        # Resolve per-core reference if dict provided
+        ref_component = reference
+        if isinstance(reference, dict):
+            ref_component = reference.get(core_level_name, None)
+        if ref_component:
+            plot_dict = convert_to_relative_be(report_dict, col_full, ref_component)
+            if plot_dict is not report_dict:
+                col_full = "Relative Binding Energy (eV)"
 
     # Plot the data
     plot_report_series(
@@ -169,8 +352,9 @@ def plot_single_core_level(
         col_full,
         update_plot_params({"ls": "--", "lw": 1.5, "m": "o"}, plot_kwargs),
         {
-            "calculate": proc_kwargs.get("calculate", "average"),
+            "calculate": calculate_mode,
             "swap_axes": "Binding Energy" in col_full,
+            "show_labels": proc_kwargs.get("show_labels", False),
         },
     )
 
@@ -222,8 +406,20 @@ def plot_all_core_levels(
     proc_kwargs : dict
         Processing options. Supported keys:
         - 'fit_param' (str): Parameter to plot (default 'BE').
-        - 'calculate' (str): Display statistic ('average' or 'difference').
-        - 'reference' (str): Component label for relative BE plotting.
+        - 'calculate' (str or None): Display statistic. 'average' shows mean,
+            'difference' shows last - first, 'ratio' shows mean area ratio,
+            None/empty disables statistics/legend.
+        - 'reference' (str or dict): Component label/name for relative BE plotting
+            and area ratio calculations. Can be component label (e.g., 'A') or
+            component name (e.g., 'LiF'). If str, applies to all core levels; if
+            dict, maps core level -> component label/name (e.g., {"C 1s": "A",
+            "O 1s": "LiF"}). For area ratios, defaults to each core's first
+            component if not specified.
+        - 'show_labels' (bool): If True, prepend component labels (e.g., "A", "B")
+            to component names in legend (default False).
+        - 'normalize_at_conc_per_core' (bool): When True, normalize atomic
+            concentrations separately for each core level so components within
+            each core sum to 100% (default False).
     plot_kwargs : dict or None
         Plot styling options forwarded to matplotlib plot.
     save_kwargs : dict
@@ -283,10 +479,10 @@ def plot_all_core_levels(
         # Using provided axes
         plot_here = False
 
-    # Get column name
+    # Get column name and calculation mode
     col_full = get_column_name(proc_kwargs.get("fit_param", "BE"))
-
-    # Check if we should normalize atomic concentration per core level
+    calculate_mode = proc_kwargs.get("calculate", "average")
+    reference = proc_kwargs.get("reference", None)
     normalize_at_conc = proc_kwargs.get("normalize_at_conc_per_core", False)
 
     # Plot each core level
@@ -295,9 +491,37 @@ def plot_all_core_levels(
 
         # Get data for this core level
         core_data = report_dict[core_level]
-        reference = proc_kwargs.get("reference", None)
         plot_dict = core_data
         plot_col = col_full
+
+        # Apply area ratio conversion per core level if requested
+        if calculate_mode == "ratio" and col_full == "Raw Area":
+            if isinstance(reference, dict):
+                ref_component_label = reference.get(core_level, None)
+            else:
+                ref_component_label = reference
+
+            ratio_reference_series = _get_reference_area_series(
+                core_data, col_full, ref_component_label
+            )
+
+            if ratio_reference_series is None:
+                print(
+                    f"Warning: Unable to compute area ratio for {core_level}; using raw areas instead."
+                )
+            else:
+                # Use provided reference or default to first component
+                ref_label = ref_component_label
+                if not ref_label:
+                    names = core_data.get("Name") or core_data.get("Comp Label")
+                    names = np.array(names, dtype=object) if names is not None else None
+                    if names is not None and names.shape[0] > 0:
+                        ref_label = str(names[0, 0] if names.ndim > 1 else names[0])
+                    else:
+                        ref_label = "?"
+                plot_dict, plot_col = _apply_area_ratio(
+                    plot_dict, col_full, ratio_reference_series, ref_label
+                )
 
         # Normalize atomic concentration per core level if requested
         if normalize_at_conc and col_full == "%At Conc":
@@ -305,9 +529,14 @@ def plot_all_core_levels(
 
         # Convert to relative BE if needed
         if reference and "Binding Energy" in col_full:
-            plot_dict = convert_to_relative_be(core_data, col_full, reference)
-            if plot_dict is not core_data:
-                plot_col = "Relative Binding Energy (eV)"
+            # Resolve per-core reference if dict provided
+            ref_component = reference
+            if isinstance(reference, dict):
+                ref_component = reference.get(core_level, None)
+            if ref_component:
+                plot_dict = convert_to_relative_be(core_data, col_full, ref_component)
+                if plot_dict is not core_data:
+                    plot_col = "Relative Binding Energy (eV)"
 
         # Plot the data
         plot_report_series(
@@ -316,8 +545,9 @@ def plot_all_core_levels(
             plot_col,
             update_plot_params({"ls": "--", "lw": 1.5, "m": "o"}, plot_kwargs),
             {
-                "calculate": proc_kwargs.get("calculate", "average"),
+                "calculate": calculate_mode,
                 "swap_axes": "Binding Energy" in plot_col,
+                "show_labels": proc_kwargs.get("show_labels", False),
             },
         )
 

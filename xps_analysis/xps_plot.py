@@ -73,11 +73,22 @@ def plot_report(
         - 'fit_param' (str): Parameter to plot (default 'BE'). Common short
           forms: "BE" (binding energy), "Area" (raw area), "At Conc" (atomic
           concentration), "Goodness" (goodness of fit).
-        - 'calculate' (str): Statistic to display in legend. Either "average"
-          (default, shows mean values) or "difference" (shows last - first).
-        - 'reference' (str): Component label for relative BE plotting (e.g.,
-          "A", "C"). Only applies when fit_param='BE'. Plots relative binding
-          energy with respect to the first value of the reference component.
+        - 'calculate' (str or None): Statistic to display in legend. Either
+            "average" (shows mean values), "difference" (shows last - first),
+            "ratio" (shows mean area ratio when fit_param='Area'), or
+            None/empty to disable statistics and legend annotation.
+        - 'reference' (str or dict): Component label or name used for both
+          relative BE plotting (when fit_param='BE') and area ratio calculations
+          (when calculate='ratio' and fit_param='Area'). Can be component label
+          (e.g., "A") or component name (e.g., "LiF"). If str, applies to all
+          core levels. If dict, maps core level -> component label/name
+          (e.g., {"C 1s": "A", "O 1s": "LiF"}). For area ratios, defaults to
+          each core's first component if not specified. For relative BE, plots
+          binding energy with respect to the first measurement of the reference
+          component.
+        - 'show_labels' (bool): If True, prepend component labels (e.g., "A", "B")
+          to component names in the legend (default False). Useful for quickly
+          identifying component labels across different core levels.
         - 'normalize_at_conc_per_core' (bool): When plotting multiple core
           levels with atomic concentration (default False), if True the atomic
           concentrations for each core level will be normalized separately so
@@ -144,6 +155,8 @@ def plot_report(
             k for k in report_dict.keys() if k not in ["Core Level", "File Name"]
         ]
 
+        calculate_mode = proc_kwargs.get("calculate", "average")
+
         # Get core_levels parameter and normalize it to a list
         core_levels_input = proc_kwargs.get("core_levels", None)
 
@@ -183,6 +196,10 @@ def plot_report(
 
         # If only one core level is selected, plot it as a single plot
         if len(selected_cores) == 1:
+            ratio_reference_core_data = None
+            if calculate_mode == "ratio":
+                # Single-core path: allow explicit data injection, otherwise use same core data
+                ratio_reference_core_data = report_dict.get(selected_cores[0])
             plot_single_core_level(
                 report_dict[selected_cores[0]],
                 ax,
@@ -190,6 +207,7 @@ def plot_report(
                 plot_kwargs,
                 save_kwargs,
                 core_level_override=selected_cores[0],
+                ratio_reference_core_data=ratio_reference_core_data,
             )
         else:
             # Plot multiple core levels
