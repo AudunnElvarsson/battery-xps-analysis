@@ -1,654 +1,767 @@
 """xps_plot
 -----------
 
-Utilities for plotting XPS spectra and fit reports.
+High-level plotting functions for XPS spectra and fit reports.
 
-This module provides functions and a small plotting helper class that
-accept dictionaries produced by the parsing utilities in
-``xps_processing`` and produce Matplotlib figures/axes. It also contains
-helpers for constructing safe filenames and saving figures with consistent
-options.
+This module provides the main public API for plotting XPS data. Functions
+accept dictionaries produced by parsing utilities in ``xps_processing`` and
+produce Matplotlib figures/axes with appropriate styling and configuration.
+
+The module supports both single and multi-core level data formats, with
+automatic detection and appropriate subplot creation.
+
+Public Functions
+----------------
+plot_comp_report : Plot fit report parameter(s) across components and core levels
+plot_region_report : Plot ratio between total values of two core levels
+plot_spectrum : Plot XPS spectrum with optional residuals
 """
 
-import os
-import re
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Import plotting utilities from helper modules
+from .plot_helpers import (
+    save_figure,
+    derive_file_name,
+    get_x_axis_from_dict,
+    ensure_axes_and_main,
+    configure_axes,
+    plot_spectrum_series,
+    plot_single_core_level,
+    plot_all_core_levels,
+    update_plot_params,
+    get_column_name,
+)
 
-# === Module-level helper functions ===
-def _update_plot_params(defaults, user_kwargs):
-    """Merge default plotting parameters with user-supplied overrides.
+
+def plot_comp_report(
+    report_dict,
+    ax=None,
+    proc_kwargs=None,
+    plot_kwargs=None,
+    save_kwargs=None,
+):
+    """Plot a fit-report parameter across components and core levels.
+
+    This is the main public function for plotting XPS fit report data. It
+    automatically detects single vs multi-core format and creates appropriate
+    plots. For multi-core data, you can select specific core levels or plot
+    all of them.
+
+    The function plots one fitted parameter (e.g., binding energy, area,
+    atomic concentration) for each component. Average or difference values
+    are shown in the legend with monospace formatting for alignment.
 
     Parameters
     ----------
-    defaults : dict
-        Default plotting parameters (e.g. ``linestyle``, ``linewidth``).
-    user_kwargs : dict or None
-        Optional user-supplied overrides; keys here overwrite ``defaults``.
+    report_dict : dict
+        Mapping produced by ``read_report_file``. For single-core format,
+        this contains parameter arrays directly. For multi-core format, this
+        is a nested dict where keys are core level names (e.g., "C 1s", "F 1s")
+        containing data dictionaries, plus metadata keys "Core Level" and
+        "File Name".
+    ax : matplotlib.axes.Axes, array of Axes, or None, optional
+        Target axis or axes to draw on. If ``None``, a new figure and axis
+        are created. For multi-core format:
+        - Single Axes: Used when plotting one core level
+        - Array of Axes: Used when provided axes match the number of core
+          levels to plot; otherwise new subplots are created
+    proc_kwargs : dict or None, optional
+        Processing options for the plot. Supported keys:
+        - 'fit_param' (str): Parameter to plot (default 'BE'). Common short
+          forms: "BE" (binding energy), "Area" (raw area), "At Conc" (atomic
+          concentration), "Goodness" (goodness of fit).
+        - 'calculate' (str or None): Statistic to display in legend. Either
+            "average" (shows mean values), "difference" (shows last - first),
+            "ratio" (shows mean area ratio when fit_param='Area'), or
+            None/empty to disable statistics and legend annotation.
+        - 'reference' (str or dict): Component label or name used for both
+          relative BE plotting (when fit_param='BE') and area ratio calculations
+          (when calculate='ratio' and fit_param='Area'). Can be component label
+          (e.g., "A") or component name (e.g., "LiF"). If str, applies to all
+          core levels. If dict, maps core level -> component label/name
+          (e.g., {"C 1s": "A", "O 1s": "LiF"}). For area ratios, defaults to
+          each core's first component if not specified. For relative BE, plots
+          binding energy with respect to the first measurement of the reference
+          component.
+        - 'show_labels' (bool): If True, prepend component labels (e.g., "A", "B")
+          to component names in the legend (default False). Useful for quickly
+          identifying component labels across different core levels.
+        - 'normalize_at_conc_per_core' (bool): When plotting multiple core
+          levels with atomic concentration (default False), if True the atomic
+          concentrations for each core level will be normalized separately so
+          components within each core level sum to 100%. If False, components
+          across all core levels sum to 100%.
+        - 'core_levels' (str, list of str, or None): For multi-core format,
+          specify which core levels to plot:
+          * Single string "C 1s" - plots only that core level
+          * List ["C 1s", "O 1s"] - plots those core levels
+          * None, "", [] or [""] - plots all available core levels
+    plot_kwargs : dict or None, optional
+        Styling arguments forwarded to ``matplotlib.axes.Axes.plot`` for the
+        component series. These override module defaults. Supports both full
+        and abbreviated parameter names (e.g., 'ls' or 'linestyle').
+    save_kwargs : dict or None, optional
+        Options for saving the figure. Supported keys:
+        - 'save_fig' (bool): Whether to save the figure (default False)
+        - 'save_folder' (str): Directory path for saving
+        - 'format' (str): File format (e.g., 'png', 'pdf')
+        - 'dpi' (int): Resolution for raster formats
 
     Returns
     -------
-    dict
-        A new dictionary containing the merged plotting parameters.
+    None
+
+    See Also
+    --------
+    plot_spectrum : Plot XPS spectrum with optional residuals
+
+    Examples
+    --------
+    Plot binding energy for all core levels in a multi-core file:
+
+    >>> report_dict = xp.read_report_file("multicore_report.txt")
+    >>> xplot.plot_comp_report(report_dict)
+
+    Plot specific core levels with difference calculation:
+
+    >>> proc_kwargs = {
+    ...     "core_levels": ["C 1s", "O 1s"],
+    ...     "calculate": "difference"
+    ... }
+    >>> xplot.plot_comp_report(report_dict, proc_kwargs=proc_kwargs)
+
+    Plot relative binding energy with custom axes:
+
+    >>> fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    >>> proc_kwargs = {"reference": "A", "core_levels": ["C 1s", "O 1s"]}
+    >>> xplot.plot_comp_report(report_dict, ax=axes, proc_kwargs=proc_kwargs)
     """
-    params = defaults.copy()
-    if user_kwargs:
-        params.update(user_kwargs)
-    return params
+    proc_kwargs = proc_kwargs or {}
+    save_kwargs = save_kwargs or {}
 
+    if report_dict is None:
+        print("No data to plot.")
+        return
 
-def _build_save_info(save_folder, name_list, save_args=None, prefix="figure"):
-    """Build a filesystem-safe filename and default save kwargs for figures.
+    # Check if multi-core format (nested dict with core level keys)
+    is_multicore = "Core Level" in report_dict and "Name" not in report_dict
 
-    Parameters
-    ----------
-    save_folder : str
-        Destination folder for the saved figure. The folder is created if it
-        does not exist.
-    name_list : list of str
-        Sequence of parts to include in the filename (joined with
-        underscores); empty or None entries are ignored.
-    save_args : dict or None
-        Optional overrides forwarded to :meth:`matplotlib.figure.Figure.savefig`.
-        The special key ``save_folder`` is ignored here (it is handled by
-        the caller).
-    prefix : str
-        Optional filename prefix. If empty, no prefix is used.
+    if is_multicore:
+        # Multi-core format handling
+        all_core_levels = [
+            k for k in report_dict.keys() if k not in ["Core Level", "File Name"]
+        ]
 
-    Returns
-    -------
-    tuple
-        ``(save_file, save_kwargs)`` where ``save_file`` is the absolute path
-        to the file and ``save_kwargs`` is a dict of keyword arguments
-        suitable for passing to ``Figure.savefig``.
-    """
-    os.makedirs(save_folder, exist_ok=True)
-    save_kwargs = {"dpi": 300, "format": "png", "bbox_inches": "tight"}
-    if save_args:
-        # allow overriding format, dpi, bbox_inches etc.
-        save_kwargs.update({k: v for k, v in save_args.items() if k != "save_folder"})
-    # build a safe name from provided parts
-    safe_parts = [
-        re.sub(r"[^A-Za-z0-9]+", "_", str(p)).strip("_")
-        for p in (name_list or [])
-        if p is not None and str(p).strip() != ""
-    ]
-    names_str = "_".join(safe_parts) or "all"
-    if prefix:
-        filename = f"{prefix}_{names_str}.{save_kwargs['format']}"
+        calculate_mode = proc_kwargs.get("calculate", "average")
+
+        # Get core_levels parameter and normalize it to a list
+        core_levels_input = proc_kwargs.get("core_levels", None)
+
+        # Normalize core_levels_input to a list
+        # Handle: None, "", [], [""], "C 1s", ["C 1s"], ["C 1s", "O 1s"]
+        if (
+            core_levels_input is None
+            or core_levels_input == ""
+            or core_levels_input == []
+        ):
+            # Plot all core levels
+            selected_cores = all_core_levels
+        elif isinstance(core_levels_input, str):
+            # Single core level as string
+            selected_cores = [core_levels_input]
+        elif isinstance(core_levels_input, list):
+            # List of core levels
+            if len(core_levels_input) == 0 or (
+                len(core_levels_input) == 1 and core_levels_input[0] == ""
+            ):
+                # Empty list or list with empty string
+                selected_cores = all_core_levels
+            else:
+                selected_cores = core_levels_input
+        else:
+            raise TypeError(
+                f"core_levels must be str, list, or None, got {type(core_levels_input)}"
+            )
+
+        # Validate that all selected core levels exist
+        invalid_cores = [c for c in selected_cores if c not in all_core_levels]
+        if invalid_cores:
+            print(
+                f"Core level(s) {invalid_cores} not found. Available: {all_core_levels}"
+            )
+            return
+
+        # If only one core level is selected, plot it as a single plot
+        if len(selected_cores) == 1:
+            ratio_reference_core_data = None
+            if calculate_mode == "ratio":
+                # Single-core path: allow explicit data injection, otherwise use same core data
+                ratio_reference_core_data = report_dict.get(selected_cores[0])
+            plot_single_core_level(
+                report_dict[selected_cores[0]],
+                ax,
+                proc_kwargs,
+                plot_kwargs,
+                save_kwargs,
+                core_level_override=selected_cores[0],
+                ratio_reference_core_data=ratio_reference_core_data,
+            )
+        else:
+            # Plot multiple core levels
+            plot_all_core_levels(
+                report_dict,
+                selected_cores,
+                ax,
+                proc_kwargs,
+                plot_kwargs,
+                save_kwargs,
+            )
     else:
-        filename = f"{names_str}.{save_kwargs['format']}"
-    save_file = os.path.join(save_folder, filename)
-    return save_file, save_kwargs
+        # Single-core format (original behavior)
+        plot_single_core_level(
+            report_dict,
+            ax,
+            proc_kwargs,
+            plot_kwargs,
+            save_kwargs,
+        )
 
 
-def _save_figure(fig, name_list=None, save_args=None, prefix="figure"):
-    """Save a Matplotlib figure using a generated safe filename.
+def plot_region_report(
+    report_dict,
+    ax=None,
+    proc_kwargs=None,
+    plot_kwargs=None,
+    save_kwargs=None,
+):
+    """Plot ratios or totals between core levels across measurements.
 
-    This helper constructs a safe filename from ``name_list`` and calls
-    :meth:`matplotlib.figure.Figure.savefig` with the computed keyword
-    arguments.
+    This function can operate in two modes:
+    1. **Ratio mode**: Calculates and plots the ratio of summed parameter values
+       between two core levels (e.g., F/C atomic concentration ratio).
+    2. **Total mode**: Plots the total summed parameter values for specified
+       core levels (e.g., total atomic concentration of F 1s and C 1s).
 
-    Parameters
-    ----------
-    fig : matplotlib.figure.Figure
-        Figure instance to save.
-    name_list : list of str or None
-        Parts used to build the filename. If ``None`` or empty, a generic
-        basename is used.
-    save_args : dict or None
-        Options forwarded to ``Figure.savefig``. The special key
-        ``save_folder`` (if present) selects the target folder.
-    prefix : str
-        Optional filename prefix; if empty the prefix is omitted.
-
-    Returns
-    -------
-    str
-        Absolute path to the saved file.
-    """
-    save_folder = (
-        save_args.get("save_folder")
-        if (save_args and "save_folder" in save_args)
-        else os.getcwd()
-    )
-    save_file, save_kwargs = _build_save_info(
-        save_folder, name_list or [], save_args, prefix=prefix
-    )
-    fig.savefig(save_file, **save_kwargs)
-    print(f"Saved figure: {save_file}")
-    return save_file
-
-
-# New module-level helpers extracted from plot_fit_spectrum to reduce complexity
-def _get_x_axis_from_dict(spectrum_dict, x_axis):
-    """Get x-axis data and display metadata from a spectrum mapping.
+    For each measurement, the function sums the parameter across all components
+    in each specified core level, then either calculates ratios or plots totals.
 
     Parameters
     ----------
-    spectrum_dict : dict
-        Mapping that may contain ``'BE'`` and/or ``'KE'`` arrays.
-    x_axis : str
-        Requested axis: ``'BE'`` (binding energy) or ``'KE'`` (kinetic energy).
+    report_dict : dict
+        Multi-core format dictionary from ``read_report_file``. Must contain
+        at least the core levels specified.
+    ax : matplotlib.axes.Axes or None, optional
+        Target axes for plotting. If None (default), creates new figure.
+        If provided, allows multiple series to be plotted on the same axes.
+    proc_kwargs : dict or None, optional
+        Processing options for the plot. Supported keys:
+        - 'plot_type' (str): Type of plot (default "ratio"). Options:
+          * "ratio": Plot ratio between numerator and denominator
+          * "total": Plot total values for specified core levels
+        - 'numerator' (str): Core level name for numerator in ratio mode
+          (default "F 1s"). Example: "F 1s", "O 1s".
+        - 'denominator' (str): Core level name for denominator in ratio mode
+          (default "C 1s"). Example: "C 1s".
+        - 'core_levels' (str or list): Core level(s) to plot in total mode.
+          Single string for one core level, or list for multiple.
+          Example: "F 1s" or ["F 1s", "C 1s", "O 1s"]
+        - 'parameter' (str): Parameter to sum across components (default "At Conc").
+          Accepts both short forms and full column names:
+          * "At Conc" or "%At Conc": Atomic concentration (sum gives total atomic %)
+          * "Area" or "Raw Area": Peak area (sum gives total signal intensity)
+          * "BE" or "Binding Energy (eV)": Binding energy
+          If a short form is provided, it will be automatically mapped to the
+          full column name.
+        - 'calculate' (str or None): Statistic to display in legend. Either
+            "average" (shows mean values), "difference" (shows last - first),
+            or None/empty to disable statistics. Default is "average".
+    plot_kwargs : dict or None, optional
+        Styling arguments forwarded to ``matplotlib.axes.Axes.plot``.
+        Supports both full and abbreviated parameter names.
+        Example: {"marker": "o", "linestyle": "-", "label": "F/C ratio"}
+    save_kwargs : dict or None, optional
+        Options for saving the figure. Supported keys:
+        - 'save_fig' (bool): Whether to save the figure (default False)
+        - 'save_folder' (str): Directory path for saving
+        - 'format' (str): File format (e.g., 'png', 'pdf')
+        - 'dpi' (int): Resolution for raster formats
 
     Returns
     -------
-    tuple
-        ``(x_values, x_label, invert)`` where ``x_values`` is the array to
-        plot on x, ``x_label`` is a human-readable axis label, and ``invert``
-        is a boolean indicating whether the x-axis should be inverted.
+    None
+
+    See Also
+    --------
+    plot_comp_report : Plot component-level data within core levels
+
+    Examples
+    --------
+    Plot F/C atomic concentration ratio evolution:
+
+    >>> report_dict = xp.read_report_file("multicore_report.txt")
+    >>> xplot.plot_region_report(report_dict,
+    ...                          proc_kwargs={"plot_type": "ratio",
+    ...                                      "numerator": "F 1s",
+    ...                                      "denominator": "C 1s"})
+
+    Plot total atomic concentrations for multiple core levels:
+
+    >>> xplot.plot_region_report(report_dict,
+    ...                          proc_kwargs={"plot_type": "total",
+    ...                                      "core_levels": ["F 1s", "C 1s", "O 1s"]})
+
+    Compare multiple ratios on the same plot:
+
+    >>> fig, ax = plt.subplots(figsize=(8, 5))
+    >>> xplot.plot_region_report(report_dict, ax=ax,
+    ...                          proc_kwargs={"numerator": "F 1s", "denominator": "C 1s"},
+    ...                          plot_kwargs={"marker": "o", "label": "F/C"})
+    >>> xplot.plot_region_report(report_dict, ax=ax,
+    ...                          proc_kwargs={"numerator": "O 1s", "denominator": "C 1s"},
+    ...                          plot_kwargs={"marker": "s", "label": "O/C"})
+
+    Plot total atomic concentration for a single core level:
+
+    >>> xplot.plot_region_report(report_dict,
+    ...                          proc_kwargs={"plot_type": "total", "core_levels": "F 1s"})
     """
-    if x_axis == "KE":
-        return spectrum_dict.get("KE"), "Kinetic Energy (eV)", False
-    return spectrum_dict.get("BE"), "Binding Energy (eV)", True
+    proc_kwargs = proc_kwargs or {}
+    plot_kwargs = plot_kwargs or {}
+    save_kwargs = save_kwargs or {}
 
+    # Extract processing options
+    plot_type = proc_kwargs.get("plot_type", "ratio")
+    parameter = get_column_name(proc_kwargs.get("parameter", "At Conc"))
+    calculate_mode = proc_kwargs.get("calculate", "average")
 
-def _should_plot_key(key, x_axis, normalised_residual):
-    """Decide whether a key from a spectrum mapping should be plotted.
+    if report_dict is None:
+        print("No data to plot.")
+        return
 
-    Parameters
-    ----------
-    key : str
-        Candidate key from the spectrum dictionary.
-    x_axis : str
-        The axis currently used for x data (``'BE'`` or ``'KE'``).
-    normalised_residual : bool
-        Whether normalised residuals are being plotted; affects.
+    # Verify multi-core format
+    is_multicore = "Core Level" in report_dict and "Name" not in report_dict
+    if not is_multicore:
+        print("Error: plot_region_report requires multi-core format data.")
+        return
 
-    Returns
-    -------
-    bool
-        True if the key should be plotted as a data series, False otherwise.
-    """
-    if key in (x_axis, "KE", "BE"):
-        return False
-    if key in ("File Name", "Sample"):
-        return False
-    if key == "Normalised Residual" and not normalised_residual:
-        return False
-    if key == "Residual" and normalised_residual:
-        return False
-    return True
+    available_cores = [
+        k for k in report_dict.keys() if k not in ["Core Level", "File Name"]
+    ]
 
-
-def _figure_from_axes(ax_in):
-    """Return the :class:`matplotlib.figure.Figure` for an axes-like input.
-
-    Parameters
-    ----------
-    ax_in : Axes or sequence of Axes
-        Axis-like object (single Axes or sequence) from which to obtain the
-        parent figure.
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-        The figure instance associated with the provided axes, or the
-        current figure if none can be determined.
-    """
-    try:
-        return ax_in[0].get_figure()
-    except (TypeError, IndexError, AttributeError):
-        try:
-            return ax_in.get_figure()
-        except (AttributeError, TypeError):
-            return plt.gcf()
-
-
-def _select_target_axis(ax, key):
-    """Select the axis to plot a given series on.
-
-    Residual series (``'Residual'`` or ``'Normalised Residual'``) are
-    plotted on the top/residual axis when a two-axis layout is used
-    (``ax[0]``); other series use the main plotting axis (``ax[1]`` or
-    ``ax``).
-
-    Parameters
-    ----------
-    ax : Axes or sequence of Axes
-        Axis or axes container used for plotting.
-    key : str
-        Name of the series being plotted.
-
-    Returns
-    -------
-    Axes
-        The target axes for the given key.
-    """
-    try:
-        if key in ("Normalised Residual", "Residual"):
-            return ax[0]
-        return ax[1]
-    except (TypeError, IndexError, AttributeError):
-        return ax
-
-
-def _derive_file_name(mapping):
-    """Derive a sensible filename base from a mapping.
-
-    The function looks for keys in the order ``'File Name'``, ``'Sample'``,
-    ``'Name'`` and falls back to ``'spectrum'``. If the value is a sequence,
-    the first element is used.
-
-    Parameters
-    ----------
-    mapping : dict
-        Mapping that may contain identifying metadata for the spectrum.
-
-    Returns
-    -------
-    str
-        A short, filesystem-friendly name suitable for use in filenames.
-    """
-    file_name = (
-        mapping.get("File Name")
-        or mapping.get("Sample")
-        or mapping.get("Name")
-        or "spectrum"
-    )
-    if isinstance(file_name, (list, np.ndarray)):
-        file_name = file_name[0] if len(file_name) else "spectrum"
-    return file_name
-
-
-def _ensure_axes_and_main(ax_in):
-    """Prepare and return a figure/axes tuple for plotting.
-
-    If ``ax_in`` is ``None`` a new :class:`matplotlib.figure.Figure` and
-    Axes are created. When ``ax_in`` is a sequence (e.g. ``(residual_ax,
-    main_ax)``), the second element is treated as the main plotting axis.
-
-    Parameters
-    ----------
-    ax_in : Axes or sequence of Axes or None
-        Optional target axes provided by the caller.
-
-    Returns
-    -------
-    tuple
-        ``(fig, ax, main_ax, plot_here)`` where ``fig`` is the Figure,
-        ``ax`` is the original axis object passed or created, ``main_ax`` is
-        the primary plotting axis and ``plot_here`` is True when a new
-        figure was created.
-    """
-    plot_here = False
-    if ax_in is None:
-        plot_here = True
-        fig, ax = plt.subplots(figsize=(8, 6))
-        # prefer the newer layout engine API when available; fall back to
-        # set_tight_layout for older matplotlib versions to avoid
-        # PendingDeprecationWarning
+    # Create figure if needed
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 5))
         try:
             fig.set_layout_engine("tight")
         except AttributeError:
             try:
                 fig.set_tight_layout(True)
             except AttributeError:
-                # last-resort: ignore if neither method exists
                 pass
+        plot_here = True
     else:
-        fig = _figure_from_axes(ax_in)
-        ax = ax_in
+        fig = ax.get_figure()
+        plot_here = False
 
-    try:
-        main_ax = ax[1]
-    except (TypeError, IndexError, AttributeError):
-        main_ax = ax
-    return fig, ax, main_ax, plot_here
+    if plot_type == "ratio":
+        # Ratio mode: plot ratio between numerator and denominator
+        numerator = proc_kwargs.get("numerator", "F 1s")
+        denominator = proc_kwargs.get("denominator", "C 1s")
 
+        # Check that both core levels exist
+        if numerator not in available_cores:
+            print(
+                f"Error: Numerator '{numerator}' not found. Available: {available_cores}"
+            )
+            return
+        if denominator not in available_cores:
+            print(
+                f"Error: Denominator '{denominator}' not found. Available: {available_cores}"
+            )
+            return
 
-def _maybe_invert_axes(ax, main_ax, invert):
-    """Backward-compatible wrapper for axis inversion (deprecated).
+        # Extract data for both core levels
+        num_data = report_dict[numerator].get(parameter)
+        denom_data = report_dict[denominator].get(parameter)
 
-    Notes
-    -----
-    This helper delegates to :func:`_configure_axes` and is kept for
-    backward compatibility; new code should call :func:`_configure_axes`
-    directly.
-    """
-    return _configure_axes(ax, main_ax, invert)
+        if num_data is None:
+            print(f"Error: Parameter '{parameter}' not found in {numerator}")
+            return
+        if denom_data is None:
+            print(f"Error: Parameter '{parameter}' not found in {denominator}")
+            return
 
+        # Convert to numpy arrays
+        num_data = np.array(num_data, dtype=float)
+        denom_data = np.array(denom_data, dtype=float)
 
-def _format_residual_axis(ax, main_ax):
-    """Format a residual axis and invert x if requested (deprecated wrapper).
+        # Check dimensions
+        if num_data.ndim != 2 or denom_data.ndim != 2:
+            print(
+                f"Error: Data must be 2D (components × measurements). Got shapes: {num_data.shape}, {denom_data.shape}"
+            )
+            return
 
-    Notes
-    -----
-    This function forwards to :func:`_configure_axes` and exists for
-    compatibility with older code paths.
-    """
-    # Deprecated; functionality moved to _configure_axes
-    return _configure_axes(ax, main_ax, invert=True)
+        # Sum across components for each measurement (axis=0 sums over components)
+        num_totals = np.nansum(num_data, axis=0)
+        denom_totals = np.nansum(denom_data, axis=0)
 
+        # Calculate ratio
+        with np.errstate(divide="ignore", invalid="ignore"):
+            values = num_totals / denom_totals
 
-def _configure_axes(ax, main_ax, invert=False):
-    """Configure axes: invert x-axis and apply residual-axis formatting.
+        # Create measurement numbers (x-axis)
+        n_measurements = len(values)
+        measurement_nums = np.arange(1, n_measurements + 1)
 
-    Parameters
-    ----------
-    ax : Axes or sequence of Axes
-        Axis or axes container used for plotting. When a sequence is used the
-        residual axis is expected at index 0.
-    main_ax : Axes
-        Primary plotting axis.
-    invert : bool, optional
-        If True attempt to invert the x-axes (useful for binding energy
-        plots where decreasing energy is conventional).
+        # Calculate statistic for legend if requested
+        numeric_vals = [v for v in values if np.isfinite(v)]
+        stat_label = None
+        stat_value = None
+        if calculate_mode and numeric_vals:
+            if calculate_mode == "average":
+                stat_label = "avg"
+                stat_value = np.mean(numeric_vals)
+            elif calculate_mode == "difference" and len(numeric_vals) >= 2:
+                stat_label = "diff"
+                stat_value = numeric_vals[-1] - numeric_vals[0]
 
-    Notes
-    -----
-    The helper swallows attribute/index errors to remain robust when a
-    single-Axes object is supplied.
-    """
-    # invert axes if requested
-    if invert:
-        try:
-            main_ax.invert_xaxis()
-        except (AttributeError, TypeError):
-            pass
-        try:
-            ax[0].invert_xaxis()
-        except (AttributeError, IndexError, TypeError):
-            pass
+        # Default plot styling for ratio mode
+        # If user provides a label, use it; otherwise use default
+        base_label = plot_kwargs.get("label", f"{numerator}/{denominator}")
+        if stat_label and stat_value is not None:
+            full_label = f"{base_label} ({stat_label}={stat_value:7.2f})"
+        else:
+            full_label = base_label
+        default_kwargs = {
+            "marker": "o",
+            "linestyle": "-",
+            "linewidth": 2,
+            "markersize": 8,
+            "label": full_label,
+        }
+        # Update with plot_kwargs but exclude 'label' since we already handled it
+        plot_kwargs_no_label = {k: v for k, v in plot_kwargs.items() if k != "label"}
+        default_kwargs.update(plot_kwargs_no_label)
 
-    # residual axis formatting
-    try:
-        ax[0].set_ylabel("Residual")
-        ax[0].spines["bottom"].set_position(("data", 0))
-        ax[0].set_xticks([])
-        ax[0].set_xticklabels([])
-        main_ax.xaxis.set_tick_params(labelbottom=True, bottom=True)
-        ax[0].spines["bottom"].set_visible(False)
-        ax[0].spines["top"].set_visible(False)
-    except (AttributeError, IndexError, TypeError):
-        pass
+        # Plot the ratio
+        line = ax.plot(measurement_nums, values, **default_kwargs)
 
-
-def _plot_report_series(report_dict, ax, col_full, params):
-    """Plot rows from a fit report mapping onto an axis.
-
-    Each row in the report is plotted as a separate series and a horizontal
-    dashed line showing the row average is added (and included in the
-    legend).
-
-    Parameters
-    ----------
-    report_dict : dict
-        Mapping produced by the fit-report parser; expected to include a
-        ``'Name'`` entry and a column with header ``col_full``.
-    ax : Axes
-        Target axis for plotting.
-    col_full : str
-        Full column name to extract from the report dictionary.
-    params : dict
-        Keyword arguments forwarded to ``Axes.plot``.
-    """
-    names = np.array(report_dict.get("Name"), dtype=object)
-    y_data = np.array(report_dict.get(col_full), dtype=object)
-
-    for i in range(y_data.shape[0]):
-        y = y_data[i]
-        x = np.arange(y_data.shape[1]) if y_data.ndim > 1 else np.arange(1)
-        label = names[i][0] if isinstance(names[i], (list, np.ndarray)) else names[i]
-        avg = np.mean([v for v in y if isinstance(v, (int, float, np.floating))])
-        (line,) = ax.plot(x, y, label=f"{label} (avg={avg:.2f})", **params)
-        ax.plot(x, [avg] * len(x), color=line.get_color(), alpha=0.7, linestyle=":")
-
-
-def _plot_spectrum_series(spectrum_dict, ax, x, opts):
-    """Plot all series contained in a spectrum mapping and return legend info.
-
-    Parameters
-    ----------
-    spectrum_dict : dict
-        Mapping where keys are series names and values are numeric sequences
-        or arrays.
-    ax : Axes or sequence of Axes
-        Axis or axes used for plotting. When a sequence is supplied residual
-        series are plotted on the residual axis (index 0).
-    x : array-like or None
-        Optional x-values to use for series that have matching length.
-    opts : dict
-        Options dictionary containing:
-        - ``x_axis`` (str): selected axis name (``'BE'`` or ``'KE'``)
-        - ``params`` (dict): plotting kwargs forwarded to ``Axes.plot``
-        - ``normalised_residual`` (bool): whether to plot normalised
-          residuals instead of raw residuals.
-
-    Returns
-    -------
-    tuple
-        ``(handles, labels)`` where ``handles`` is a list of Line2D objects
-        and ``labels`` is a list of corresponding legend labels.
-    """
-    x_axis = opts.get("x_axis")
-    params = opts.get("params") or {}
-    normalised_residual = opts.get("normalised_residual", False)
-
-    handles = []
-    labels = []
-    for key, values in spectrum_dict.items():
-        if not _should_plot_key(key, x_axis, normalised_residual):
-            continue
-        target_ax = _select_target_axis(ax, key)
-        try:
-            cond = x is not None and len(x) == len(values)
-        except TypeError:
-            cond = False
-        xs = x if cond else np.arange(len(values))
-        try:
-            (line,) = target_ax.plot(xs, values, label=key, **params)
-        except (TypeError, ValueError):
-            # skip series that cannot be plotted
-            continue
-        handles.append(line)
-        labels.append(key)
-    return handles, labels
-
-
-class SpectrumPlotter:
-    """Helper for plotting spectra and fit-report series.
-
-    The class stores short-lived plotting state (figure and axes) so the
-    instance methods can coordinate plotting and saving without threading
-    many arguments through helper calls.
-    """
-
-    def __init__(self):
-        # placeholder for future shared state
-        self.fig = None
-        self.ax = None
-        self.main_ax = None
-        self.plot_here = False
-
-    # --- instance helpers to reduce parameter passing ---
-    def _ensure_axes(self, ax_in):
-        """Initialise or derive figure/axes state for subsequent plotting.
-
-        Parameters
-        ----------
-        ax_in : Axes or sequence of Axes or None
-            Optional axes provided by the caller. When ``None`` a new figure
-            and axes are created.
-        """
-        self.fig, self.ax, self.main_ax, self.plot_here = _ensure_axes_and_main(ax_in)
-
-    def _derive_col_full(self, fit_param):
-        return {
-            "BE": "Binding Energy (eV)",
-            "Area": "Raw Area",
-            "At Conc": "%At Conc",
-            "Goodness": "Goodness of Fit",
-        }.get(fit_param, fit_param)
-
-    # Removed trivial wrapper methods to reduce indirection. Calls to
-    # the corresponding module-level helpers are inlined below.
-
-    def _save_if_requested(self, save_fig, save_args, mapping):
-        if save_fig:
-            _save_figure(
-                self.fig,
-                name_list=[_derive_file_name(mapping)],
-                save_args=save_args,
-                prefix="",
+        # Add horizontal line for average if requested
+        if calculate_mode == "average" and stat_value is not None:
+            ax.axhline(
+                stat_value,
+                color=line[0].get_color(),
+                linestyle="--",
+                linewidth=1,
+                alpha=0.5,
             )
 
-    def plot_report(
-        self, report_dict, ax=None, save_fig=False, save_args=None, **kwargs
-    ):
-        """Instance version of plot_fit_report."""
-        fit_param = kwargs.pop("fit_param", "BE")
-        plot_kwargs = kwargs.pop("plot_kwargs", None)
+        # Configure axes
+        ax.set_xlabel("Measurement Number", fontsize=12)
+        ax.set_ylabel("Atomic Ratio", fontsize=12)
+        ax.grid(True, alpha=0.3)
+        legend = ax.legend()
+        for text in legend.get_texts():
+            text.set_family("monospace")
 
-        params = _update_plot_params(
-            {"linestyle": "--", "linewidth": 1.5, "marker": "o"}, plot_kwargs
-        )
+        # Save figure if requested
+        if save_kwargs.get("save_fig", False):
+            parent_file_name = report_dict.get("File Name", "report")
+            save_figure(
+                fig,
+                name_list=[parent_file_name],
+                save_args=save_kwargs,
+                prefix=f"{numerator.replace(' ', '')}_{denominator.replace(' ', '')}_ratio_",
+            )
 
-        if report_dict is None:
-            print("No data to plot.")
+    elif plot_type == "total":
+        # Total mode: plot total values for specified core levels
+        core_levels_input = proc_kwargs.get("core_levels", available_cores)
+
+        # Normalize to list
+        if isinstance(core_levels_input, str):
+            core_levels = [core_levels_input]
+        elif isinstance(core_levels_input, list):
+            core_levels = core_levels_input
+        else:
+            print(
+                f"Error: core_levels must be str or list, got {type(core_levels_input)}"
+            )
             return
 
-        # prepare axes and state on the instance
-        self._ensure_axes(ax)
-
-        col_full = self._derive_col_full(fit_param)
-        # inline the former wrapper: plot directly using module helper
-        _plot_report_series(report_dict, self.main_ax, col_full, params)
-
-        self.main_ax.set_xlabel("Experimental Variable")
-        self.main_ax.set_ylabel(col_full)
-        self.main_ax.legend()
-
-        self._save_if_requested(save_fig, save_args, report_dict)
-
-        if self.plot_here:
-            plt.show()
-
-    def plot_spectrum(
-        self, spectrum_dict, ax=None, save_fig=False, save_args=None, **kwargs
-    ):
-        """Instance version of plot_fit_spectrum."""
-        x_axis = kwargs.pop("x_axis", "BE")
-        normalised_residual = kwargs.pop("normalised_residual", False)
-        plot_kwargs = kwargs.pop("plot_kwargs", None)
-
-        params = _update_plot_params({"linestyle": "-", "linewidth": 1.5}, plot_kwargs)
-
-        if spectrum_dict is None:
-            print("No data to plot.")
+        # Validate core levels exist
+        invalid_cores = [c for c in core_levels if c not in available_cores]
+        if invalid_cores:
+            print(
+                f"Error: Core level(s) {invalid_cores} not found. Available: {available_cores}"
+            )
             return
 
-        # prepare axes/state
-        self._ensure_axes(ax)
+        # Get color cycle for multiple core levels
+        color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
-        # get x-axis info directly from module helper
-        xinfo = _get_x_axis_from_dict(spectrum_dict, x_axis)
-        handles, labels = _plot_spectrum_series(
-            spectrum_dict,
-            self.ax,
-            xinfo[0],
-            {
-                "x_axis": x_axis,
-                "params": params,
-                "normalised_residual": normalised_residual,
-            },
+        # Calculate maximum label length for alignment
+        max_label_len = max(
+            len(plot_kwargs.get("label", core_level)) for core_level in core_levels
         )
 
-        self.main_ax.set_xlabel(xinfo[1])
-        self.main_ax.set_ylabel("Intensity (a.u.)")
+        # Plot each core level
+        for idx, core_level in enumerate(core_levels):
+            # Extract data
+            data = report_dict[core_level].get(parameter)
 
-        if handles:
-            self.main_ax.legend(handles, labels)
+            if data is None:
+                print(
+                    f"Warning: Parameter '{parameter}' not found in {core_level}, skipping"
+                )
+                continue
 
-        # inline axis configuration
-        _configure_axes(self.ax, self.main_ax, invert=xinfo[2])
+            # Convert to numpy array
+            data = np.array(data, dtype=float)
 
-        self._save_if_requested(save_fig, save_args, spectrum_dict)
+            # Check dimensions
+            if data.ndim != 2:
+                print(
+                    f"Warning: Data for {core_level} must be 2D, got shape {data.shape}, skipping"
+                )
+                continue
 
-        if self.plot_here:
-            plt.show()
+            # Sum across components for each measurement
+            totals = np.nansum(data, axis=0)
+
+            # Create measurement numbers (x-axis)
+            n_measurements = len(totals)
+            measurement_nums = np.arange(1, n_measurements + 1)
+
+            # Calculate statistic for legend if requested
+            numeric_vals = [v for v in totals if np.isfinite(v)]
+            stat_label = None
+            stat_value = None
+            if calculate_mode and numeric_vals:
+                if calculate_mode == "average":
+                    stat_label = "avg"
+                    stat_value = np.mean(numeric_vals)
+                elif calculate_mode == "difference" and len(numeric_vals) >= 2:
+                    stat_label = "diff"
+                    stat_value = numeric_vals[-1] - numeric_vals[0]
+
+            # Default plot styling for total mode
+            # If user provides a label, use it; otherwise use core level name
+            base_label = plot_kwargs.get("label", core_level)
+            # Pad label to max length for alignment
+            padded_label = base_label.ljust(max_label_len)
+            if stat_label and stat_value is not None:
+                full_label = f"{padded_label} ({stat_label}={stat_value:7.2f})"
+            else:
+                full_label = padded_label
+            default_kwargs = {
+                "marker": "o",
+                "linestyle": "-",
+                "linewidth": 2,
+                "markersize": 8,
+                "color": color_cycle[idx % len(color_cycle)],
+                "label": full_label,
+            }
+            # Update with plot_kwargs but exclude 'label' since we already handled it
+            plot_kwargs_no_label = {
+                k: v for k, v in plot_kwargs.items() if k != "label"
+            }
+            default_kwargs.update(plot_kwargs_no_label)
+
+            # Plot the total
+            line = ax.plot(measurement_nums, totals, **default_kwargs)
+
+            # Add horizontal line for average if requested
+            if calculate_mode == "average" and stat_value is not None:
+                ax.axhline(
+                    stat_value,
+                    color=line[0].get_color(),
+                    linestyle="--",
+                    linewidth=1,
+                    alpha=0.5,
+                )
+
+        # Configure axes
+        ax.set_xlabel("Measurement Number", fontsize=12)
+        ax.set_ylabel("Atomic Concentration (%)", fontsize=12)
+        ax.grid(True, alpha=0.3)
+        legend = ax.legend()
+        for text in legend.get_texts():
+            text.set_family("monospace")
+
+        # Save figure if requested
+        if save_kwargs.get("save_fig", False):
+            parent_file_name = report_dict.get("File Name", "report")
+            save_figure(
+                fig,
+                name_list=[parent_file_name],
+                save_args=save_kwargs,
+                prefix="region_totals_",
+            )
+
+    else:
+        print(f"Error: Unknown plot_type '{plot_type}'. Must be 'ratio' or 'total'.")
+        return
+
+    if plot_here:
+        plt.show()
 
 
-def plot_fit_report(report_dict, ax=None, save_fig=False, save_args=None, **kwargs):
-    """Plot a fit-report parameter across all components.
+def plot_spectrum(
+    spectrum_dict,
+    ax=None,
+    proc_kwargs=None,
+    plot_kwargs=None,
+    save_kwargs=None,
+):
+    """Plot XPS spectrum with optional residuals.
 
-    The function plots one fitted parameter (for example binding energy or
-    area) for each component present in ``report_dict``. A horizontal dashed
-    line showing the component average is added for each series and included
-    in the legend.
-
-    Parameters
-    ----------
-    report_dict : dict
-        Mapping produced by the fit-report parser (header -> arrays). Expected
-        to contain a ``'Name'`` entry and the column named by ``fit_param``.
-    ax : matplotlib.axes.Axes or None, optional
-        Target axis to draw on. If ``None`` a new figure and axis are created.
-    save_fig : bool, default False
-        If True the generated figure will be saved using ``save_args``.
-    save_args : dict or None, optional
-        Options forwarded to the saving helper (may include ``save_folder``,
-        ``format``, ``dpi``).
-    fit_param : str, optional
-        Short or full column name of the parameter to plot (default ``'BE'``).
-        Common short forms ("BE", "Area", "At Conc", "Goodness") are
-        mapped to full column headers internally.
-    plot_kwargs : dict, optional
-        Keyword arguments forwarded to :meth:`matplotlib.axes.Axes.plot` for
-        the component series (overrides module defaults).
-
-    Returns
-    -------
-    None
-
-    Notes
-    -----
-    This function is a thin wrapper around :class:`SpectrumPlotter.plot_report`
-    and exists for convenience when plotting a single report mapping.
-    """
-    # delegate to SpectrumPlotter to keep a compact module-level function
-    sp = SpectrumPlotter()
-    return sp.plot_report(
-        report_dict, ax=ax, save_fig=save_fig, save_args=save_args, **kwargs
-    )
-
-
-def plot_fit_spectrum(spectrum_dict, ax=None, save_fig=False, save_args=None, **kwargs):
-    """Plot a spectrum and optional residuals from a spectrum dictionary.
-
-    Convenience wrapper that constructs a :class:`SpectrumPlotter` and calls
-    its :meth:`SpectrumPlotter.plot_spectrum` method.
+    This function plots XPS spectrum data including fitted components and
+    optional residuals. It automatically handles axis setup, core level
+    display in the title, and figure management.
 
     Parameters
     ----------
     spectrum_dict : dict
-        Mapping with series to plot. Expected keys include ``'BE'`` and/or
-        ``'KE'`` for x-values and other keys for data (components, residuals).
+        Mapping produced by ``read_spectrum_file`` containing spectrum data.
+        Expected keys include 'BE' and/or 'KE' for x-values, component names
+        for fitted peaks, 'Measured' for experimental data, and optionally
+        'Residual' or 'Normalised Residual' for fit residuals. Should also
+        contain 'Core Level' and 'File Name' metadata.
     ax : matplotlib.axes.Axes or sequence of Axes, optional
-        Target axis or axes. If ``None``, a new figure/axes pair is created.
-    save_fig : bool, default False
-        If True the generated figure will be saved using ``save_args``.
-    save_args : dict, optional
-        Save options passed to :func:`_save_figure` (e.g. ``save_folder``,
-        ``format``, ``dpi``).
-    x_axis : {'BE', 'KE'}, default 'BE'
-        Which x-axis data to use when plotting.
-    normalised_residual : bool, default False
-        Whether to plot the normalised residual series instead of raw residual.
-    plot_kwargs : dict, optional
-        Keyword arguments forwarded to ``Axes.plot`` for data series.
+        Target axis or axes. If ``None``, a new figure with two axes (for
+        residuals and main plot) is created. Can be:
+        - Single Axes: Used for main plot only (no residuals)
+        - Sequence [residual_ax, main_ax]: Used for residual + main plot
+    proc_kwargs : dict or None, optional
+        Processing options for the plot. Supported keys:
+        - 'x_axis' (str): Which x-axis to use, 'BE' (binding energy, default)
+          or 'KE' (kinetic energy).
+        - 'normalised_residual' (bool): Whether to plot normalised residual
+          instead of raw residual (default False).
+        - 'plot_items' (list of str or None): Item types to include in the plot.
+          Valid values: 'measured', 'background', 'components', 'envelope',
+          'residual'. If None (default), plots all items.
+    plot_kwargs : dict or None, optional
+        Styling arguments forwarded to ``matplotlib.axes.Axes.plot`` for data
+        series. These override module defaults. Supports both full and
+        abbreviated parameter names (e.g., 'ls' or 'linestyle').
+    save_kwargs : dict or None, optional
+        Options for saving the figure. Supported keys:
+        - 'save_fig' (bool): Whether to save the figure (default False)
+        - 'save_folder' (str): Directory path for saving
+        - 'format' (str): File format (e.g., 'png', 'pdf')
+        - 'dpi' (int): Resolution for raster formats
 
     Returns
     -------
     None
 
-    Notes
-    -----
-    This function is a thin wrapper — most logic lives in
-    :class:`SpectrumPlotter` and module-level helper functions.
+    See Also
+    --------
+    plot_comp_report : Plot fit report parameter(s) across components
+    plot_region_ratio : Plot ratio between core levels
+
+    Examples
+    --------
+    Plot spectrum with binding energy x-axis:
+
+    >>> spectrum_dict = xp.read_spectrum_file("spectrum.txt")
+    >>> xplot.plot_spectrum(spectrum_dict)
+
+    Plot with kinetic energy and normalized residuals:
+
+    >>> proc_kwargs = {"x_axis": "KE", "normalised_residual": True}
+    >>> xplot.plot_spectrum(spectrum_dict, proc_kwargs=proc_kwargs)
+
+    Use custom axes layout:
+
+    >>> fig, axes = plt.subplots(2, 1, figsize=(8, 6),
+    ...                          gridspec_kw={"height_ratios": [1, 8], "hspace": 0})
+    >>> xplot.plot_spectrum(spectrum_dict, ax=axes)
     """
-    sp = SpectrumPlotter()
-    return sp.plot_spectrum(
-        spectrum_dict, ax=ax, save_fig=save_fig, save_args=save_args, **kwargs
+    # Extract parameters
+    proc_kwargs = proc_kwargs or {}
+    save_kwargs = save_kwargs or {}
+    x_axis = proc_kwargs.get("x_axis", "BE")
+    normalised_residual = proc_kwargs.get("normalised_residual", False)
+    plot_items = proc_kwargs.get("plot_items", None)
+
+    if spectrum_dict is None:
+        print("No data to plot.")
+        return
+
+    # Determine if residuals will be plotted
+    # Default: plot all items when plot_items not specified
+    if plot_items is None:
+        plot_items_to_check = [
+            "measured",
+            "background",
+            "components",
+            "envelope",
+            "residual",
+        ]
+    else:
+        plot_items_to_check = [item.lower() for item in plot_items]
+
+    will_plot_residual = "residual" in plot_items_to_check
+
+    # Create axes if needed: 2 axes if plotting residuals, 1 if not
+    if ax is None and will_plot_residual:
+        # Create figure with 2 axes for residuals
+        fig, ax = plt.subplots(
+            2,
+            1,
+            figsize=(8, 6),
+            gridspec_kw={"height_ratios": [1, 8], "hspace": 0},
+        )
+        try:
+            fig.set_layout_engine("tight")
+        except AttributeError:
+            try:
+                fig.set_tight_layout(True)
+            except AttributeError:
+                pass
+
+    # Prepare axes
+    fig, ax, main_ax, plot_here = ensure_axes_and_main(ax)
+
+    # Get x-axis info and plot data
+    x_values, x_label, invert = get_x_axis_from_dict(spectrum_dict, x_axis)
+    plot_params = update_plot_params({"ls": "-", "lw": 1.5}, plot_kwargs)
+    handles, labels = plot_spectrum_series(
+        spectrum_dict,
+        ax,
+        x_values,
+        {
+            "x_axis": x_axis,
+            "params": plot_params,
+            "normalised_residual": proc_kwargs.get("normalised_residual", False),
+            "plot_items": proc_kwargs.get("plot_items", None),
+        },
     )
+
+    # Configure labels, title and legend
+    main_ax.set_xlabel(x_label)
+    main_ax.set_ylabel("Intensity (a.u.)")
+    fig.suptitle(spectrum_dict.get("Core Level") or "Unknown")
+    if handles:
+        main_ax.legend(handles, labels)
+
+    # Configure axis inversion and residual formatting
+    configure_axes(ax, main_ax, invert=invert)
+
+    # Save figure if requested
+    if save_kwargs.get("save_fig", False):
+        save_figure(
+            fig,
+            name_list=[derive_file_name(spectrum_dict)],
+            save_args=save_kwargs,
+            prefix="",
+        )
+
+    if plot_here:
+        plt.show()
