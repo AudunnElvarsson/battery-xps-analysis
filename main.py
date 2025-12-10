@@ -15,26 +15,14 @@ def convert_all_vms(project_folder):
     xu.convert_all_vms_in_project(project_folder)
 
 
-def report_parameters(report_dict, save_param=None):
-    """
-    Plot the composition report from the specified file path and save figure.
-
-    Parameters
-    ----------
-    report_dict : dict
-        The report dictionary from read_report_file.
-    save_param : dict, optional
-        Save parameters for the figure.
-    normalize_per_core : bool, optional
-        If True, normalize atomic concentrations per core level (default False).
-    """
+def comp_report_parameters(report_dict, save_param=None):
     # Select which core levels to plot
     selected_cores = xp.get_core_levels(report_dict)
 
     proc_param = {
-        "fit_param": "BE",
-        "calculate": "average",
-        #        "reference": {"F 1s": "PFx", "O 1s": "B", "C 1s": "A"},
+        "fit_param": "At Conc",
+        "calculate": "",
+        # "reference": {"F 1s": "PFx", "O 1s": "B", "C 1s": "A"},
         "core_levels": selected_cores,
         "show_labels": True,
         "normalize_at_conc_per_core": True,
@@ -46,7 +34,7 @@ def report_parameters(report_dict, save_param=None):
     fig, axes = plt.subplots(1, n_cores, figsize=(6 * n_cores, 5))
     fig.set_tight_layout(True)
 
-    xplot.plot_report(
+    xplot.plot_comp_report(
         report_dict,
         ax=axes,
         proc_kwargs=proc_param,
@@ -55,17 +43,30 @@ def report_parameters(report_dict, save_param=None):
     )
 
 
-def spectrum_parameters(spectrum_dict, save_param=None):
-    """
-    Plot the spectrum from the specified dictionary and save figure.
+def region_report_parameters(report_dict, save_param=None):
+    # Example: Plot F/C and O/C atomic concentration ratios
+    fig, ax = plt.subplots(figsize=(10, 6))
+    xplot.plot_region_ratio(
+        report_dict,
+        numerator="F 1s",
+        denominator="C 1s",
+        parameter="%At Conc",
+        ax=ax,
+        plot_kwargs={"marker": "o", "color": "blue", "label": "F/C"},
+    )
+    xplot.plot_region_ratio(
+        report_dict,
+        numerator="O 1s",
+        denominator="C 1s",
+        parameter="%At Conc",
+        ax=ax,
+        plot_kwargs={"marker": "s", "color": "red", "label": "O/C"},
+    )
+    ax.set_title("Core Level Ratios vs. Measurement", fontsize=14, fontweight="bold")
+    ax.set_ylabel("Atomic Conc. Ratio", fontsize=12)
 
-    Parameters
-    ----------
-    spectrum_dict : dict
-        The spectrum dictionary from read_spectrum_file.
-    save_param : dict, optional
-        Save parameters for the figure.
-    """
+
+def spectrum_parameters(spectrum_dict, save_param=None):
     proc_param = {
         "x_axis": "BE",
         "normalised_residual": False,
@@ -96,33 +97,31 @@ def main():
     """
     # Flags to control execution
     run_convert_all_vms_in_project = False
-    run_print_report = True
-    run_plot_report = False
+    run_print_report = False
+    run_plot_comp_report = False
+    run_plot_region_ratio = True
     run_plot_spectrum = False
 
     project_folder = (
         r"c:/Users/audun/OneDrive - Chalmers/Documents/Research/"
         r"1_Improving_XPS_Analysis_Methods/1_data/"
     )
-    experiment_folder = (
+    exp_folder = (
         project_folder + r"250221_Gr_XPS_beam_damage_and_neutralizers/3_output/"
     )
-    report_file = (
-        experiment_folder
-        + r"2_beam_damage_unwashed_comp_report_F1s_O1s_C1s_P2p_Li1s.txt"
-    )
-    spectrum_file = experiment_folder + r"2_beam_damage_unwashed_spectrum_C1s.txt"
+    report_file = exp_folder + r"2_beam_damage_unwashed_comp_report.txt"
+    spectrum_file = exp_folder + r"2_beam_damage_unwashed_spectrum_C1s.txt"
 
     save_param = {
         "save_fig": False,
         "format": "png",
-        "experiment_folder": experiment_folder,
+        "exp_folder": exp_folder,
     }
 
     if run_convert_all_vms_in_project:
         convert_all_vms(project_folder)
 
-    if run_print_report or run_plot_report:
+    if run_print_report or run_plot_comp_report or run_plot_region_ratio:
         report_dict = xp.read_report_file(report_file)
         available_params = xp.get_available_parameters(report_dict)
         print("Available parameters:", available_params)
@@ -130,12 +129,23 @@ def main():
         if run_print_report:
             xp.print_report(
                 report_dict,
-                reference="A",
-                parameters=["Label", "BE", "FWHM", "RSF", "Line Shape"],
+                # reference={"F 1s": "PFx", "C 1s": "CO3"},
+                parameters=[
+                    "Label",
+                    "BE",
+                    "Pos Constr.",
+                    "FWHM",
+                    "FWHM Constr.",
+                    "Area",
+                    "Area Constr.",
+                ],
             )
 
-        if run_plot_report:
-            report_parameters(report_dict, save_param=save_param)
+        if run_plot_comp_report:
+            comp_report_parameters(report_dict, save_param=save_param)
+
+        if run_plot_region_ratio:
+            region_report_parameters(report_dict, save_param=save_param)
 
     if run_plot_spectrum:
         spectrum_dict = xp.read_spectrum_file(spectrum_file)

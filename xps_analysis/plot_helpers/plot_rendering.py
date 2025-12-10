@@ -231,11 +231,18 @@ def plot_report_series(report_dict, ax, col_full, params, plot_options=None):
     comp_labels = report_dict.get("Comp Label")
     if comp_labels is not None:
         comp_labels = np.array(comp_labels, dtype=object)
-    y_data = np.array(report_dict.get(col_full), dtype=object)
+    y_data_raw = report_dict.get(col_full)
     show_labels = plot_options.get("show_labels", False)
 
-    # Check if data is empty
-    if y_data.shape[0] == 0:
+    # Check if data exists and is valid
+    if y_data_raw is None:
+        print(f"Warning: Column '{col_full}' not found in data. Skipping plot.")
+        return
+
+    y_data = np.array(y_data_raw, dtype=object)
+
+    # Check if data is empty or scalar
+    if y_data.ndim == 0 or (y_data.ndim > 0 and y_data.shape[0] == 0):
         return
 
     # Find maximum label length for alignment

@@ -12,7 +12,8 @@ automatic detection and appropriate subplot creation.
 
 Public Functions
 ----------------
-plot_report : Plot fit report parameter(s) across components and core levels
+plot_comp_report : Plot fit report parameter(s) across components and core levels
+plot_region_ratio : Plot ratio between total values of two core levels
 plot_spectrum : Plot XPS spectrum with optional residuals
 
 Notes
@@ -21,6 +22,7 @@ Notes
 """
 
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Import plotting utilities from helper modules
 from .plot_helpers import (
@@ -36,7 +38,7 @@ from .plot_helpers import (
 )
 
 
-def plot_report(
+def plot_comp_report(
     report_dict,
     ax=None,
     proc_kwargs=None,
@@ -123,7 +125,7 @@ def plot_report(
     Plot binding energy for all core levels in a multi-core file:
 
     >>> report_dict = xp.read_report_file("multicore_report.txt")
-    >>> xplot.plot_report(report_dict)
+    >>> xplot.plot_comp_report(report_dict)
 
     Plot specific core levels with difference calculation:
 
@@ -131,13 +133,13 @@ def plot_report(
     ...     "core_levels": ["C 1s", "O 1s"],
     ...     "calculate": "difference"
     ... }
-    >>> xplot.plot_report(report_dict, proc_kwargs=proc_kwargs)
+    >>> xplot.plot_comp_report(report_dict, proc_kwargs=proc_kwargs)
 
     Plot relative binding energy with custom axes:
 
     >>> fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     >>> proc_kwargs = {"reference": "A", "core_levels": ["C 1s", "O 1s"]}
-    >>> xplot.plot_report(report_dict, ax=axes, proc_kwargs=proc_kwargs)
+    >>> xplot.plot_comp_report(report_dict, ax=axes, proc_kwargs=proc_kwargs)
     """
     proc_kwargs = proc_kwargs or {}
     save_kwargs = save_kwargs or {}
@@ -230,6 +232,193 @@ def plot_report(
         )
 
 
+def plot_region_ratio(
+    report_dict,
+    numerator="F 1s",
+    denominator="C 1s",
+    parameter="%At Conc",
+    ax=None,
+    plot_kwargs=None,
+    save_kwargs=None,
+):
+    """Plot ratio between total values of two core levels across measurements.
+
+    Calculates the ratio of summed parameter values (e.g., total atomic
+    concentration) between two core levels as a function of measurement
+    number (Data Set). Useful for tracking compositional changes across
+    experimental variables like time, temperature, or treatment conditions.
+
+    For each measurement, the function:
+    1. Sums the parameter across all components in the numerator core level
+    2. Sums the parameter across all components in the denominator core level
+    3. Calculates the ratio: sum(numerator) / sum(denominator)
+    4. Plots the ratio vs measurement number
+
+    Parameters
+    ----------
+    report_dict : dict
+        Multi-core format dictionary from ``read_report_file``. Must contain
+        at least the core levels specified in numerator and denominator.
+    numerator : str, optional
+        Core level name for numerator (default "F 1s"). Example: "F 1s", "O 1s".
+    denominator : str, optional
+        Core level name for denominator (default "C 1s"). Example: "C 1s".
+    parameter : str, optional
+        Parameter to sum across components (default "%At Conc"). Common values:
+        - "%At Conc": Atomic concentration (sum gives total atomic %)
+        - "Raw Area": Peak area (sum gives total signal intensity)
+        Use the full column name as it appears in the data dictionary.
+    ax : matplotlib.axes.Axes or None, optional
+        Target axes for plotting. If None (default), creates new figure.
+        If provided, allows multiple ratios to be plotted on the same axes.
+    plot_kwargs : dict or None, optional
+        Styling arguments forwarded to ``matplotlib.axes.Axes.plot``.
+        Supports both full and abbreviated parameter names.
+        Example: {"marker": "o", "linestyle": "-", "label": "F/C ratio"}
+    save_kwargs : dict or None, optional
+        Options for saving the figure. Supported keys:
+        - 'save_fig' (bool): Whether to save the figure (default False)
+        - 'save_folder' (str): Directory path for saving
+        - 'format' (str): File format (e.g., 'png', 'pdf')
+        - 'dpi' (int): Resolution for raster formats
+
+    Returns
+    -------
+    None
+
+    See Also
+    --------
+    plot_comp_report : Plot component-level data within core levels
+
+    Examples
+    --------
+    Plot F/C atomic concentration ratio evolution:
+
+    >>> report_dict = xp.read_report_file("multicore_report.txt")
+    >>> xplot.plot_region_ratio(report_dict, "F 1s", "C 1s")
+
+    Compare multiple ratios on the same plot:
+
+    >>> fig, ax = plt.subplots(figsize=(8, 5))
+    >>> xplot.plot_region_ratio(report_dict, "F 1s", "C 1s", ax=ax,
+    ...                         plot_kwargs={"marker": "o", "label": "F/C"})
+    >>> xplot.plot_region_ratio(report_dict, "O 1s", "C 1s", ax=ax,
+    ...                         plot_kwargs={"marker": "s", "label": "O/C"})
+    >>> ax.legend()
+
+    Plot using raw area instead of atomic concentration:
+
+    >>> xplot.plot_region_ratio(report_dict, "F 1s", "C 1s",
+    ...                         parameter="Raw Area")
+    """
+    plot_kwargs = plot_kwargs or {}
+    save_kwargs = save_kwargs or {}
+
+    if report_dict is None:
+        print("No data to plot.")
+        return
+
+    # Verify multi-core format
+    is_multicore = "Core Level" in report_dict and "Name" not in report_dict
+    if not is_multicore:
+        print("Error: plot_region_ratio requires multi-core format data.")
+        return
+
+    # Check that both core levels exist
+    available_cores = [
+        k for k in report_dict.keys() if k not in ["Core Level", "File Name"]
+    ]
+    if numerator not in available_cores:
+        print(f"Error: Numerator '{numerator}' not found. Available: {available_cores}")
+        return
+    if denominator not in available_cores:
+        print(
+            f"Error: Denominator '{denominator}' not found. Available: {available_cores}"
+        )
+        return
+
+    # Extract data for both core levels
+    num_data = report_dict[numerator].get(parameter)
+    denom_data = report_dict[denominator].get(parameter)
+
+    if num_data is None:
+        print(f"Error: Parameter '{parameter}' not found in {numerator}")
+        return
+    if denom_data is None:
+        print(f"Error: Parameter '{parameter}' not found in {denominator}")
+        return
+
+    # Convert to numpy arrays
+    num_data = np.array(num_data, dtype=float)
+    denom_data = np.array(denom_data, dtype=float)
+
+    # Check dimensions
+    if num_data.ndim != 2 or denom_data.ndim != 2:
+        print(
+            f"Error: Data must be 2D (components × measurements). Got shapes: {num_data.shape}, {denom_data.shape}"
+        )
+        return
+
+    # Sum across components for each measurement (axis=0 sums over components)
+    num_totals = np.nansum(num_data, axis=0)
+    denom_totals = np.nansum(denom_data, axis=0)
+
+    # Calculate ratio
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratios = num_totals / denom_totals
+
+    # Create measurement numbers (x-axis)
+    n_measurements = len(ratios)
+    measurement_nums = np.arange(1, n_measurements + 1)
+
+    # Create figure if needed
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 5))
+        try:
+            fig.set_layout_engine("tight")
+        except AttributeError:
+            try:
+                fig.set_tight_layout(True)
+            except AttributeError:
+                pass
+        plot_here = True
+    else:
+        fig = ax.get_figure()
+        plot_here = False
+
+    # Default plot styling
+    default_kwargs = {
+        "marker": "o",
+        "linestyle": "-",
+        "linewidth": 2,
+        "markersize": 8,
+        "label": f"{numerator}/{denominator}",
+    }
+    default_kwargs.update(plot_kwargs)
+
+    # Plot the ratio
+    ax.plot(measurement_nums, ratios, **default_kwargs)
+
+    # Configure axes
+    ax.set_xlabel("Measurement Number", fontsize=12)
+    ax.set_ylabel("Atomic Ratio", fontsize=12)
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+
+    # Save figure if requested
+    if save_kwargs.get("save_fig", False):
+        parent_file_name = report_dict.get("File Name", "report")
+        save_figure(
+            fig,
+            name_list=[parent_file_name],
+            save_args=save_kwargs,
+            prefix=f"{numerator.replace(' ', '')}_{denominator.replace(' ', '')}_ratio_",
+        )
+
+    if plot_here:
+        plt.show()
+
+
 def plot_spectrum(
     spectrum_dict,
     ax=None,
@@ -282,7 +471,8 @@ def plot_spectrum(
 
     See Also
     --------
-    plot_report : Plot fit report parameter(s) across components
+    plot_comp_report : Plot fit report parameter(s) across components
+    plot_region_ratio : Plot ratio between core levels
 
     Examples
     --------
