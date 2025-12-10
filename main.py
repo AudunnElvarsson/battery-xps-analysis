@@ -8,11 +8,11 @@ import xps_analysis.xps_processing as xp
 import xps_analysis.xps_plot as xplot
 
 
-def convert_all_vms(project_folder):
+def convert_all_vms(proj_folder):
     """
     Convert all VM files in the specified project folder.
     """
-    xu.convert_all_vms_in_project(project_folder)
+    xu.convert_all_vms_in_project(proj_folder)
 
 
 def comp_report_parameters(report_dict, save_param=None):
@@ -21,7 +21,7 @@ def comp_report_parameters(report_dict, save_param=None):
 
     proc_param = {
         "fit_param": "At Conc",
-        "calculate": "",
+        "calculate": "average",
         # "reference": {"F 1s": "PFx", "O 1s": "B", "C 1s": "A"},
         "core_levels": selected_cores,
         "show_labels": True,
@@ -47,19 +47,20 @@ def region_report_parameters(report_dict, save_param=None):
     # Example 1: Plot F/C and O/C atomic concentration ratios
     proc_param_1 = {
         "plot_type": "ratio",
-        "parameter": "%At Conc",
+        "parameter": "At Conc",
         "numerator": "F 1s",
         "denominator": "C 1s",
+        "calculate": "average",
     }
     plot_param_1 = {"marker": "o", "color": "blue", "label": "F/C"}
     proc_param_2 = {
         "plot_type": "ratio",
-        "numerator": "O 1s",
+        "parameter": "At Conc",
+        "numerator": "P 2p",
         "denominator": "C 1s",
-        "parameter": "%At Conc",
+        "calculate": "average",
     }
-    plot_param_2 = {"marker": "s", "color": "red", "label": "O/C"}
-
+    plot_param_2 = {"marker": "s", "color": "red", "label": "P/C"}
     fig, ax = plt.subplots(figsize=(8, 5))
     fig.set_tight_layout(True)
 
@@ -81,7 +82,8 @@ def region_report_parameters(report_dict, save_param=None):
     # Example 2: Plot total atomic concentrations for all core levels
     proc_param_3 = {
         "plot_type": "total",
-        "parameter": "%At Conc",
+        "parameter": "At Conc",
+        "calculate": "average",
     }
     fig, ax = plt.subplots(figsize=(8, 5))
     fig.set_tight_layout(True)
@@ -123,17 +125,15 @@ def main():
     # Flags to control execution
     run_convert_all_vms_in_project = False
     run_print_report = False
-    run_plot_comp_report = False
+    run_plot_comp_report = True
     run_plot_region_ratio = True
     run_plot_spectrum = False
 
-    project_folder = (
+    proj_folder = (
         r"c:/Users/audun/OneDrive - Chalmers/Documents/Research/"
         r"1_Improving_XPS_Analysis_Methods/1_data/"
     )
-    exp_folder = (
-        project_folder + r"250221_Gr_XPS_beam_damage_and_neutralizers/3_output/"
-    )
+    exp_folder = proj_folder + r"250221_Gr_XPS_beam_damage_and_neutralizers/3_output/"
     report_file = exp_folder + r"2_beam_damage_unwashed_comp_report.txt"
     spectrum_file = exp_folder + r"2_beam_damage_unwashed_spectrum_C1s.txt"
 
@@ -144,7 +144,7 @@ def main():
     }
 
     if run_convert_all_vms_in_project:
-        convert_all_vms(project_folder)
+        convert_all_vms(proj_folder)
 
     if run_print_report or run_plot_comp_report or run_plot_region_ratio:
         report_dict = xp.read_report_file(report_file)

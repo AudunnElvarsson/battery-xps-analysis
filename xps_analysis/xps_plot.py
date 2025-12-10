@@ -35,6 +35,7 @@ from .plot_helpers import (
     plot_single_core_level,
     plot_all_core_levels,
     update_plot_params,
+    get_column_name,
 )
 
 
@@ -270,11 +271,16 @@ def plot_region_report(
         - 'core_levels' (str or list): Core level(s) to plot in total mode.
           Single string for one core level, or list for multiple.
           Example: "F 1s" or ["F 1s", "C 1s", "O 1s"]
-        - 'parameter' (str): Parameter to sum across components (default "%At Conc").
-          Common values:
-          * "%At Conc": Atomic concentration (sum gives total atomic %)
-          * "Raw Area": Peak area (sum gives total signal intensity)
-          Use the full column name as it appears in the data dictionary.
+        - 'parameter' (str): Parameter to sum across components (default "At Conc").
+          Accepts both short forms and full column names:
+          * "At Conc" or "%At Conc": Atomic concentration (sum gives total atomic %)
+          * "Area" or "Raw Area": Peak area (sum gives total signal intensity)
+          * "BE" or "Binding Energy (eV)": Binding energy
+          If a short form is provided, it will be automatically mapped to the
+          full column name.
+        - 'calculate' (str or None): Statistic to display in legend. Either
+            "average" (shows mean values), "difference" (shows last - first),
+            or None/empty to disable statistics. Default is "average".
     plot_kwargs : dict or None, optional
         Styling arguments forwarded to ``matplotlib.axes.Axes.plot``.
         Supports both full and abbreviated parameter names.
@@ -331,7 +337,8 @@ def plot_region_report(
 
     # Extract processing options
     plot_type = proc_kwargs.get("plot_type", "ratio")
-    parameter = proc_kwargs.get("parameter", "%At Conc")
+    parameter = get_column_name(proc_kwargs.get("parameter", "At Conc"))
+    calculate_mode = proc_kwargs.get("calculate", "average")
 
     if report_dict is None:
         print("No data to plot.")
@@ -413,24 +420,56 @@ def plot_region_report(
         n_measurements = len(values)
         measurement_nums = np.arange(1, n_measurements + 1)
 
+        # Calculate statistic for legend if requested
+        numeric_vals = [v for v in values if np.isfinite(v)]
+        stat_label = None
+        stat_value = None
+        if calculate_mode and numeric_vals:
+            if calculate_mode == "average":
+                stat_label = "avg"
+                stat_value = np.mean(numeric_vals)
+            elif calculate_mode == "difference" and len(numeric_vals) >= 2:
+                stat_label = "diff"
+                stat_value = numeric_vals[-1] - numeric_vals[0]
+
         # Default plot styling for ratio mode
+        # If user provides a label, use it; otherwise use default
+        base_label = plot_kwargs.get("label", f"{numerator}/{denominator}")
+        if stat_label and stat_value is not None:
+            full_label = f"{base_label} ({stat_label}={stat_value:7.2f})"
+        else:
+            full_label = base_label
         default_kwargs = {
             "marker": "o",
             "linestyle": "-",
             "linewidth": 2,
             "markersize": 8,
-            "label": f"{numerator}/{denominator}",
+            "label": full_label,
         }
-        default_kwargs.update(plot_kwargs)
+        # Update with plot_kwargs but exclude 'label' since we already handled it
+        plot_kwargs_no_label = {k: v for k, v in plot_kwargs.items() if k != "label"}
+        default_kwargs.update(plot_kwargs_no_label)
 
         # Plot the ratio
-        ax.plot(measurement_nums, values, **default_kwargs)
+        line = ax.plot(measurement_nums, values, **default_kwargs)
+
+        # Add horizontal line for average if requested
+        if calculate_mode == "average" and stat_value is not None:
+            ax.axhline(
+                stat_value,
+                color=line[0].get_color(),
+                linestyle="--",
+                linewidth=1,
+                alpha=0.5,
+            )
 
         # Configure axes
         ax.set_xlabel("Measurement Number", fontsize=12)
         ax.set_ylabel("Atomic Ratio", fontsize=12)
         ax.grid(True, alpha=0.3)
-        ax.legend()
+        legend = ax.legend()
+        for text in legend.get_texts():
+            text.set_family("monospace")
 
         # Save figure if requested
         if save_kwargs.get("save_fig", False):
@@ -468,6 +507,11 @@ def plot_region_report(
         # Get color cycle for multiple core levels
         color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
+        # Calculate maximum label length for alignment
+        max_label_len = max(
+            len(plot_kwargs.get("label", core_level)) for core_level in core_levels
+        )
+
         # Plot each core level
         for idx, core_level in enumerate(core_levels):
             # Extract data
@@ -496,25 +540,61 @@ def plot_region_report(
             n_measurements = len(totals)
             measurement_nums = np.arange(1, n_measurements + 1)
 
+            # Calculate statistic for legend if requested
+            numeric_vals = [v for v in totals if np.isfinite(v)]
+            stat_label = None
+            stat_value = None
+            if calculate_mode and numeric_vals:
+                if calculate_mode == "average":
+                    stat_label = "avg"
+                    stat_value = np.mean(numeric_vals)
+                elif calculate_mode == "difference" and len(numeric_vals) >= 2:
+                    stat_label = "diff"
+                    stat_value = numeric_vals[-1] - numeric_vals[0]
+
             # Default plot styling for total mode
+            # If user provides a label, use it; otherwise use core level name
+            base_label = plot_kwargs.get("label", core_level)
+            # Pad label to max length for alignment
+            padded_label = base_label.ljust(max_label_len)
+            if stat_label and stat_value is not None:
+                full_label = f"{padded_label} ({stat_label}={stat_value:7.2f})"
+            else:
+                full_label = padded_label
             default_kwargs = {
                 "marker": "o",
                 "linestyle": "-",
                 "linewidth": 2,
                 "markersize": 8,
                 "color": color_cycle[idx % len(color_cycle)],
-                "label": core_level,
+                "label": full_label,
             }
-            default_kwargs.update(plot_kwargs)
+            # Update with plot_kwargs but exclude 'label' since we already handled it
+            plot_kwargs_no_label = {
+                k: v for k, v in plot_kwargs.items() if k != "label"
+            }
+            default_kwargs.update(plot_kwargs_no_label)
 
             # Plot the total
-            ax.plot(measurement_nums, totals, **default_kwargs)
+            line = ax.plot(measurement_nums, totals, **default_kwargs)
+
+            # Add horizontal line for average if requested
+            if calculate_mode == "average" and stat_value is not None:
+                ax.axhline(
+                    stat_value,
+                    color=line[0].get_color(),
+                    linestyle="--",
+                    linewidth=1,
+                    alpha=0.5,
+                )
 
         # Configure axes
         ax.set_xlabel("Measurement Number", fontsize=12)
         ax.set_ylabel("Atomic Concentration (%)", fontsize=12)
         ax.grid(True, alpha=0.3)
-        ax.legend()
+        legend = ax.legend()
+        for text in legend.get_texts():
+            text.set_family("monospace")
 
         # Save figure if requested
         if save_kwargs.get("save_fig", False):
