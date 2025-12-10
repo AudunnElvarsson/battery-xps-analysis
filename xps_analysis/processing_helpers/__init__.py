@@ -32,6 +32,7 @@ has_dataset_column : Check if header indicates multi-core format
 table_to_dict : Convert grouped rows to dictionary format
 table_to_dict_exclude_columns : Convert rows excluding specific columns
 parse_report_rows : Parse report rows handling multi-core format
+label_spin_orbit_doublets : Add spin-orbit suffixes to duplicate component names
 
 Data Analysis
 ~~~~~~~~~~~~~
@@ -97,6 +98,7 @@ __all__ = [
     "table_to_dict",
     "table_to_dict_exclude_columns",
     "parse_report_rows",
+    "label_spin_orbit_doublets",
     # Data analysis
     "process_parameter",
     "extract_component_names",

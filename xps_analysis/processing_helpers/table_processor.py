@@ -8,9 +8,11 @@ Public Functions
 clean_header : Normalize a header line into cleaned and raw headers
 group_rows_by_name : Group table rows by repeating name column
 group_rows_by_dataset : Group table rows by Data Set column (multi-core format)
+has_dataset_column : Check if header contains 'Data Set' or 'Iteration' column
+label_spin_orbit_doublets : Add spin-orbit suffixes to duplicate component names
 table_to_dict : Convert grouped rows to dictionary format
+table_to_dict_exclude_columns : Convert grouped rows excluding specific columns
 parse_report_rows : Parse report data rows into structured format
-has_dataset_column : Check if header contains 'Data Set' column
 """
 
 import numpy as np
