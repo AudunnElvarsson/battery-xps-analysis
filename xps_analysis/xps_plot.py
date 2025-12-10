@@ -13,7 +13,7 @@ automatic detection and appropriate subplot creation.
 Public Functions
 ----------------
 plot_comp_report : Plot fit report parameter(s) across components and core levels
-plot_region_ratio : Plot ratio between total values of two core levels
+plot_region_report : Plot ratio between total values of two core levels
 plot_spectrum : Plot XPS spectrum with optional residuals
 
 Notes
@@ -232,45 +232,49 @@ def plot_comp_report(
         )
 
 
-def plot_region_ratio(
+def plot_region_report(
     report_dict,
-    numerator="F 1s",
-    denominator="C 1s",
-    parameter="%At Conc",
     ax=None,
+    proc_kwargs=None,
     plot_kwargs=None,
     save_kwargs=None,
 ):
-    """Plot ratio between total values of two core levels across measurements.
+    """Plot ratios or totals between core levels across measurements.
 
-    Calculates the ratio of summed parameter values (e.g., total atomic
-    concentration) between two core levels as a function of measurement
-    number (Data Set). Useful for tracking compositional changes across
-    experimental variables like time, temperature, or treatment conditions.
+    This function can operate in two modes:
+    1. **Ratio mode**: Calculates and plots the ratio of summed parameter values
+       between two core levels (e.g., F/C atomic concentration ratio).
+    2. **Total mode**: Plots the total summed parameter values for specified
+       core levels (e.g., total atomic concentration of F 1s and C 1s).
 
-    For each measurement, the function:
-    1. Sums the parameter across all components in the numerator core level
-    2. Sums the parameter across all components in the denominator core level
-    3. Calculates the ratio: sum(numerator) / sum(denominator)
-    4. Plots the ratio vs measurement number
+    For each measurement, the function sums the parameter across all components
+    in each specified core level, then either calculates ratios or plots totals.
 
     Parameters
     ----------
     report_dict : dict
         Multi-core format dictionary from ``read_report_file``. Must contain
-        at least the core levels specified in numerator and denominator.
-    numerator : str, optional
-        Core level name for numerator (default "F 1s"). Example: "F 1s", "O 1s".
-    denominator : str, optional
-        Core level name for denominator (default "C 1s"). Example: "C 1s".
-    parameter : str, optional
-        Parameter to sum across components (default "%At Conc"). Common values:
-        - "%At Conc": Atomic concentration (sum gives total atomic %)
-        - "Raw Area": Peak area (sum gives total signal intensity)
-        Use the full column name as it appears in the data dictionary.
+        at least the core levels specified.
     ax : matplotlib.axes.Axes or None, optional
         Target axes for plotting. If None (default), creates new figure.
-        If provided, allows multiple ratios to be plotted on the same axes.
+        If provided, allows multiple series to be plotted on the same axes.
+    proc_kwargs : dict or None, optional
+        Processing options for the plot. Supported keys:
+        - 'plot_type' (str): Type of plot (default "ratio"). Options:
+          * "ratio": Plot ratio between numerator and denominator
+          * "total": Plot total values for specified core levels
+        - 'numerator' (str): Core level name for numerator in ratio mode
+          (default "F 1s"). Example: "F 1s", "O 1s".
+        - 'denominator' (str): Core level name for denominator in ratio mode
+          (default "C 1s"). Example: "C 1s".
+        - 'core_levels' (str or list): Core level(s) to plot in total mode.
+          Single string for one core level, or list for multiple.
+          Example: "F 1s" or ["F 1s", "C 1s", "O 1s"]
+        - 'parameter' (str): Parameter to sum across components (default "%At Conc").
+          Common values:
+          * "%At Conc": Atomic concentration (sum gives total atomic %)
+          * "Raw Area": Peak area (sum gives total signal intensity)
+          Use the full column name as it appears in the data dictionary.
     plot_kwargs : dict or None, optional
         Styling arguments forwarded to ``matplotlib.axes.Axes.plot``.
         Supports both full and abbreviated parameter names.
@@ -295,24 +299,39 @@ def plot_region_ratio(
     Plot F/C atomic concentration ratio evolution:
 
     >>> report_dict = xp.read_report_file("multicore_report.txt")
-    >>> xplot.plot_region_ratio(report_dict, "F 1s", "C 1s")
+    >>> xplot.plot_region_report(report_dict,
+    ...                          proc_kwargs={"plot_type": "ratio",
+    ...                                      "numerator": "F 1s",
+    ...                                      "denominator": "C 1s"})
+
+    Plot total atomic concentrations for multiple core levels:
+
+    >>> xplot.plot_region_report(report_dict,
+    ...                          proc_kwargs={"plot_type": "total",
+    ...                                      "core_levels": ["F 1s", "C 1s", "O 1s"]})
 
     Compare multiple ratios on the same plot:
 
     >>> fig, ax = plt.subplots(figsize=(8, 5))
-    >>> xplot.plot_region_ratio(report_dict, "F 1s", "C 1s", ax=ax,
-    ...                         plot_kwargs={"marker": "o", "label": "F/C"})
-    >>> xplot.plot_region_ratio(report_dict, "O 1s", "C 1s", ax=ax,
-    ...                         plot_kwargs={"marker": "s", "label": "O/C"})
-    >>> ax.legend()
+    >>> xplot.plot_region_report(report_dict, ax=ax,
+    ...                          proc_kwargs={"numerator": "F 1s", "denominator": "C 1s"},
+    ...                          plot_kwargs={"marker": "o", "label": "F/C"})
+    >>> xplot.plot_region_report(report_dict, ax=ax,
+    ...                          proc_kwargs={"numerator": "O 1s", "denominator": "C 1s"},
+    ...                          plot_kwargs={"marker": "s", "label": "O/C"})
 
-    Plot using raw area instead of atomic concentration:
+    Plot total atomic concentration for a single core level:
 
-    >>> xplot.plot_region_ratio(report_dict, "F 1s", "C 1s",
-    ...                         parameter="Raw Area")
+    >>> xplot.plot_region_report(report_dict,
+    ...                          proc_kwargs={"plot_type": "total", "core_levels": "F 1s"})
     """
+    proc_kwargs = proc_kwargs or {}
     plot_kwargs = plot_kwargs or {}
     save_kwargs = save_kwargs or {}
+
+    # Extract processing options
+    plot_type = proc_kwargs.get("plot_type", "ratio")
+    parameter = proc_kwargs.get("parameter", "%At Conc")
 
     if report_dict is None:
         print("No data to plot.")
@@ -321,55 +340,12 @@ def plot_region_ratio(
     # Verify multi-core format
     is_multicore = "Core Level" in report_dict and "Name" not in report_dict
     if not is_multicore:
-        print("Error: plot_region_ratio requires multi-core format data.")
+        print("Error: plot_region_report requires multi-core format data.")
         return
 
-    # Check that both core levels exist
     available_cores = [
         k for k in report_dict.keys() if k not in ["Core Level", "File Name"]
     ]
-    if numerator not in available_cores:
-        print(f"Error: Numerator '{numerator}' not found. Available: {available_cores}")
-        return
-    if denominator not in available_cores:
-        print(
-            f"Error: Denominator '{denominator}' not found. Available: {available_cores}"
-        )
-        return
-
-    # Extract data for both core levels
-    num_data = report_dict[numerator].get(parameter)
-    denom_data = report_dict[denominator].get(parameter)
-
-    if num_data is None:
-        print(f"Error: Parameter '{parameter}' not found in {numerator}")
-        return
-    if denom_data is None:
-        print(f"Error: Parameter '{parameter}' not found in {denominator}")
-        return
-
-    # Convert to numpy arrays
-    num_data = np.array(num_data, dtype=float)
-    denom_data = np.array(denom_data, dtype=float)
-
-    # Check dimensions
-    if num_data.ndim != 2 or denom_data.ndim != 2:
-        print(
-            f"Error: Data must be 2D (components × measurements). Got shapes: {num_data.shape}, {denom_data.shape}"
-        )
-        return
-
-    # Sum across components for each measurement (axis=0 sums over components)
-    num_totals = np.nansum(num_data, axis=0)
-    denom_totals = np.nansum(denom_data, axis=0)
-
-    # Calculate ratio
-    with np.errstate(divide="ignore", invalid="ignore"):
-        ratios = num_totals / denom_totals
-
-    # Create measurement numbers (x-axis)
-    n_measurements = len(ratios)
-    measurement_nums = np.arange(1, n_measurements + 1)
 
     # Create figure if needed
     if ax is None:
@@ -386,28 +362,177 @@ def plot_region_ratio(
         fig = ax.get_figure()
         plot_here = False
 
-    # Default plot styling
-    default_kwargs = {
-        "marker": "o",
-        "linestyle": "-",
-        "linewidth": 2,
-        "markersize": 8,
-        "label": f"{numerator}/{denominator}",
-    }
-    default_kwargs.update(plot_kwargs)
+    if plot_type == "ratio":
+        # Ratio mode: plot ratio between numerator and denominator
+        numerator = proc_kwargs.get("numerator", "F 1s")
+        denominator = proc_kwargs.get("denominator", "C 1s")
 
-    # Plot the ratio
-    ax.plot(measurement_nums, ratios, **default_kwargs)
+        # Check that both core levels exist
+        if numerator not in available_cores:
+            print(
+                f"Error: Numerator '{numerator}' not found. Available: {available_cores}"
+            )
+            return
+        if denominator not in available_cores:
+            print(
+                f"Error: Denominator '{denominator}' not found. Available: {available_cores}"
+            )
+            return
 
-    # Configure axes
-    ax.set_xlabel("Measurement Number", fontsize=12)
-    ax.set_ylabel("Atomic Ratio", fontsize=12)
-    ax.grid(True, alpha=0.3)
-    ax.legend()
+        # Extract data for both core levels
+        num_data = report_dict[numerator].get(parameter)
+        denom_data = report_dict[denominator].get(parameter)
 
-    # Save figure if requested
-    if save_kwargs.get("save_fig", False):
-        parent_file_name = report_dict.get("File Name", "report")
+        if num_data is None:
+            print(f"Error: Parameter '{parameter}' not found in {numerator}")
+            return
+        if denom_data is None:
+            print(f"Error: Parameter '{parameter}' not found in {denominator}")
+            return
+
+        # Convert to numpy arrays
+        num_data = np.array(num_data, dtype=float)
+        denom_data = np.array(denom_data, dtype=float)
+
+        # Check dimensions
+        if num_data.ndim != 2 or denom_data.ndim != 2:
+            print(
+                f"Error: Data must be 2D (components × measurements). Got shapes: {num_data.shape}, {denom_data.shape}"
+            )
+            return
+
+        # Sum across components for each measurement (axis=0 sums over components)
+        num_totals = np.nansum(num_data, axis=0)
+        denom_totals = np.nansum(denom_data, axis=0)
+
+        # Calculate ratio
+        with np.errstate(divide="ignore", invalid="ignore"):
+            values = num_totals / denom_totals
+
+        # Create measurement numbers (x-axis)
+        n_measurements = len(values)
+        measurement_nums = np.arange(1, n_measurements + 1)
+
+        # Default plot styling for ratio mode
+        default_kwargs = {
+            "marker": "o",
+            "linestyle": "-",
+            "linewidth": 2,
+            "markersize": 8,
+            "label": f"{numerator}/{denominator}",
+        }
+        default_kwargs.update(plot_kwargs)
+
+        # Plot the ratio
+        ax.plot(measurement_nums, values, **default_kwargs)
+
+        # Configure axes
+        ax.set_xlabel("Measurement Number", fontsize=12)
+        ax.set_ylabel("Atomic Ratio", fontsize=12)
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+
+        # Save figure if requested
+        if save_kwargs.get("save_fig", False):
+            parent_file_name = report_dict.get("File Name", "report")
+            save_figure(
+                fig,
+                name_list=[parent_file_name],
+                save_args=save_kwargs,
+                prefix=f"{numerator.replace(' ', '')}_{denominator.replace(' ', '')}_ratio_",
+            )
+
+    elif plot_type == "total":
+        # Total mode: plot total values for specified core levels
+        core_levels_input = proc_kwargs.get("core_levels", available_cores)
+
+        # Normalize to list
+        if isinstance(core_levels_input, str):
+            core_levels = [core_levels_input]
+        elif isinstance(core_levels_input, list):
+            core_levels = core_levels_input
+        else:
+            print(
+                f"Error: core_levels must be str or list, got {type(core_levels_input)}"
+            )
+            return
+
+        # Validate core levels exist
+        invalid_cores = [c for c in core_levels if c not in available_cores]
+        if invalid_cores:
+            print(
+                f"Error: Core level(s) {invalid_cores} not found. Available: {available_cores}"
+            )
+            return
+
+        # Get color cycle for multiple core levels
+        color_cycle = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+        # Plot each core level
+        for idx, core_level in enumerate(core_levels):
+            # Extract data
+            data = report_dict[core_level].get(parameter)
+
+            if data is None:
+                print(
+                    f"Warning: Parameter '{parameter}' not found in {core_level}, skipping"
+                )
+                continue
+
+            # Convert to numpy array
+            data = np.array(data, dtype=float)
+
+            # Check dimensions
+            if data.ndim != 2:
+                print(
+                    f"Warning: Data for {core_level} must be 2D, got shape {data.shape}, skipping"
+                )
+                continue
+
+            # Sum across components for each measurement
+            totals = np.nansum(data, axis=0)
+
+            # Create measurement numbers (x-axis)
+            n_measurements = len(totals)
+            measurement_nums = np.arange(1, n_measurements + 1)
+
+            # Default plot styling for total mode
+            default_kwargs = {
+                "marker": "o",
+                "linestyle": "-",
+                "linewidth": 2,
+                "markersize": 8,
+                "color": color_cycle[idx % len(color_cycle)],
+                "label": core_level,
+            }
+            default_kwargs.update(plot_kwargs)
+
+            # Plot the total
+            ax.plot(measurement_nums, totals, **default_kwargs)
+
+        # Configure axes
+        ax.set_xlabel("Measurement Number", fontsize=12)
+        ax.set_ylabel("Atomic Concentration (%)", fontsize=12)
+        ax.grid(True, alpha=0.3)
+        ax.legend()
+
+        # Save figure if requested
+        if save_kwargs.get("save_fig", False):
+            parent_file_name = report_dict.get("File Name", "report")
+            save_figure(
+                fig,
+                name_list=[parent_file_name],
+                save_args=save_kwargs,
+                prefix="region_totals_",
+            )
+
+    else:
+        print(f"Error: Unknown plot_type '{plot_type}'. Must be 'ratio' or 'total'.")
+        return
+
+    if plot_here:
+        plt.show()
+
         save_figure(
             fig,
             name_list=[parent_file_name],

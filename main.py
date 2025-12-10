@@ -44,26 +44,51 @@ def comp_report_parameters(report_dict, save_param=None):
 
 
 def region_report_parameters(report_dict, save_param=None):
-    # Example: Plot F/C and O/C atomic concentration ratios
-    fig, ax = plt.subplots(figsize=(10, 6))
-    xplot.plot_region_ratio(
+    # Example 1: Plot F/C and O/C atomic concentration ratios
+    proc_param_1 = {
+        "plot_type": "ratio",
+        "parameter": "%At Conc",
+        "numerator": "F 1s",
+        "denominator": "C 1s",
+    }
+    plot_param_1 = {"marker": "o", "color": "blue", "label": "F/C"}
+    proc_param_2 = {
+        "plot_type": "ratio",
+        "numerator": "O 1s",
+        "denominator": "C 1s",
+        "parameter": "%At Conc",
+    }
+    plot_param_2 = {"marker": "s", "color": "red", "label": "O/C"}
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    fig.set_tight_layout(True)
+
+    xplot.plot_region_report(
         report_dict,
-        numerator="F 1s",
-        denominator="C 1s",
-        parameter="%At Conc",
         ax=ax,
-        plot_kwargs={"marker": "o", "color": "blue", "label": "F/C"},
+        proc_kwargs=proc_param_1,
+        plot_kwargs=plot_param_1,
+        save_kwargs=save_param,
     )
-    xplot.plot_region_ratio(
+    xplot.plot_region_report(
         report_dict,
-        numerator="O 1s",
-        denominator="C 1s",
-        parameter="%At Conc",
         ax=ax,
-        plot_kwargs={"marker": "s", "color": "red", "label": "O/C"},
+        proc_kwargs=proc_param_2,
+        plot_kwargs=plot_param_2,
+        save_kwargs=save_param,
     )
-    ax.set_title("Core Level Ratios vs. Measurement", fontsize=14, fontweight="bold")
-    ax.set_ylabel("Atomic Conc. Ratio", fontsize=12)
+
+    # Example 2: Plot total atomic concentrations for all core levels
+    proc_param_3 = {
+        "plot_type": "total",
+        "parameter": "%At Conc",
+    }
+    fig, ax = plt.subplots(figsize=(8, 5))
+    fig.set_tight_layout(True)
+
+    xplot.plot_region_report(
+        report_dict, ax=ax, proc_kwargs=proc_param_3, save_kwargs=save_param
+    )
 
 
 def spectrum_parameters(spectrum_dict, save_param=None):
@@ -124,22 +149,10 @@ def main():
     if run_print_report or run_plot_comp_report or run_plot_region_ratio:
         report_dict = xp.read_report_file(report_file)
         available_params = xp.get_available_parameters(report_dict)
-        print("Available parameters:", available_params)
+        # print("Available parameters:", available_params)
 
         if run_print_report:
-            xp.print_report(
-                report_dict,
-                # reference={"F 1s": "PFx", "C 1s": "CO3"},
-                parameters=[
-                    "Label",
-                    "BE",
-                    "Pos Constr.",
-                    "FWHM",
-                    "FWHM Constr.",
-                    "Area",
-                    "Area Constr.",
-                ],
-            )
+            xp.print_report(report_dict, reference=None, parameters=None)
 
         if run_plot_comp_report:
             comp_report_parameters(report_dict, save_param=save_param)
