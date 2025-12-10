@@ -84,10 +84,8 @@ def process_all_parameters(fit_data, component_names):
     component_data = {comp: {} for comp in component_names}
 
     skip_keys = {
-        "Constr.",
         "File Name",
         "Name",
-        "Area/(RSF*T*MFP)",
         "Core Level",
         "Doublet Group",
     }

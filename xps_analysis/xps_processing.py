@@ -15,11 +15,68 @@ Public Functions
 ----------------
 read_report_file : Parse XPS fit report files into structured dictionaries
 read_spectrum_file : Parse XPS spectrum data files into dictionaries
+get_available_parameters : Get list of all parameters available in report data
 print_report : Print formatted table of average values from report data
 get_core_levels : Get list of core levels from a report dictionary
 
+File Format Support
+-------------------
+The module automatically detects and handles two report file formats:
+
+1. **Single core level format**: Traditional format containing data for one
+   core level. Returns a flat dictionary with parameter arrays.
+
+2. **Multi-core level format**: New format with "Data Set" or "Iteration"
+   column containing multiple core levels. Returns a nested dictionary where
+   each core level is a key containing its parameter arrays.
+
+Typical Workflow
+----------------
+1. Read report file with ``read_report_file()``
+2. Check available parameters with ``get_available_parameters()``
+3. Print formatted tables with ``print_report()`` using custom parameters
+4. Extract core level names with ``get_core_levels()`` for plotting
+
+Examples
+--------
+Basic usage for report files:
+
+>>> import xps_analysis.xps_processing as xp
+>>>
+>>> # Read report file (auto-detects format)
+>>> report = xp.read_report_file("fit_report.txt")
+>>>
+>>> # See what parameters are available
+>>> params = xp.get_available_parameters(report)
+>>> print("Numeric:", params['numeric'])
+>>> print("String:", params['string'])
+>>>
+>>> # Print with default parameters
+>>> xp.print_report(report)
+>>>
+>>> # Print with custom parameters
+>>> custom_params = ["Label", "BE", "FWHM", "RSF", "Raw Area"]
+>>> xp.print_report(report, parameters=custom_params)
+>>>
+>>> # Get core levels for plotting
+>>> core_levels = xp.get_core_levels(report)
+
+Working with spectrum files:
+
+>>> # Read spectrum file
+>>> spectrum = xp.read_spectrum_file("C1s_spectrum.txt")
+>>>
+>>> # Access data arrays
+>>> be = spectrum['BE']
+>>> intensity = spectrum['Measured']
+
 Notes
 -----
+All parameter names from the original data file are preserved, including:
+- Binding energy, FWHM, RSF (Relative Sensitivity Factor)
+- Atomic concentration, raw peak areas
+- Constraint parameters (position, area, FWHM constraints)
+- Line shapes and component labels
 
 """
 
@@ -307,7 +364,112 @@ def read_spectrum_file(file_path):
     return renamed_dict
 
 
-def print_report(fit_data, reference="A", core_level=None):
+def get_available_parameters(fit_data, core_level=None):
+    """Get list of all available parameters in fit report data.
+
+    This function returns all parameter names that can be displayed in
+    print_report tables, organized by type (numeric vs string). This is
+    useful for discovering what data is available before customizing
+    table output.
+
+    All parameters from the original data file are included, such as:
+    - Binding energy (BE), FWHM, RSF
+    - Atomic concentration (%At Conc), raw areas
+    - Constraint values (Pos Constr., Area Constr., FWHM Constr.)
+    - RSF-corrected areas (Area/(RSF*T*MFP))
+    - Line shapes and component labels
+
+    Parameters
+    ----------
+    fit_data : dict
+        Dictionary returned by ``read_report_file`` containing fit parameters.
+        Can be either single-core format (flat dict) or multi-core format
+        (nested dict with core level keys).
+    core_level : str or None, optional
+        For multi-core format, specify which core level to check. If None,
+        uses the first available core level. Ignored for single-core format.
+
+    Returns
+    -------
+    dict
+        Dictionary with two keys:
+
+        - 'numeric' : list of str
+            Names of numeric parameters (can be averaged, plotted)
+        - 'string' : list of str
+            Names of string parameters (text values like line shapes)
+
+        Returns empty lists if no data found or core level doesn't exist.
+
+    See Also
+    --------
+    print_report : Print tables with custom parameter selection
+    read_report_file : Parse XPS fit report files
+
+    Examples
+    --------
+    Discover available parameters:
+
+    >>> report_dict = read_report_file("report.txt")
+    >>> params = get_available_parameters(report_dict)
+    >>> print("Numeric:", params['numeric'])
+    Numeric: ['BE', 'FWHM', 'RSF', '%At Conc', 'Pos Constr.',
+              'FWHM Constr.', 'Area/(RSF*T*MFP)', 'Raw Area']
+    >>> print("String:", params['string'])
+    String: ['Line Shape', 'Area Constr.', 'Label', 'Not Specified']
+
+    Use with print_report to customize output:
+
+    >>> # Show only essential parameters
+    >>> essential = ["Label", "BE", "FWHM", "Raw Area"]
+    >>> print_report(report_dict, parameters=essential)
+
+    >>> # Show all numeric parameters
+    >>> all_numeric = params['numeric']
+    >>> print_report(report_dict, parameters=all_numeric)
+
+    For multi-core format, check specific core level:
+
+    >>> params_c1s = get_available_parameters(report_dict, core_level="C 1s")
+    >>> params_f1s = get_available_parameters(report_dict, core_level="F 1s")
+
+    Notes
+    -----
+    Metadata fields like "File Name", "Core Level", "Name", and "Doublet Group"
+    are automatically excluded as they are not displayable parameters.
+    """
+    from .processing_helpers import extract_component_names, process_all_parameters
+
+    # Check if multi-core format
+    is_multicore = "Core Level" in fit_data and "Name" not in fit_data
+
+    if is_multicore:
+        if core_level:
+            if core_level not in fit_data:
+                return {"numeric": [], "string": []}
+            data = fit_data[core_level]
+        else:
+            # Use first core level
+            core_levels = [
+                k for k in fit_data.keys() if k not in ["Core Level", "File Name"]
+            ]
+            if not core_levels:
+                return {"numeric": [], "string": []}
+            data = fit_data[core_levels[0]]
+    else:
+        data = fit_data
+
+    if "Name" not in data or data["Name"].size == 0:
+        return {"numeric": [], "string": []}
+
+    # Extract parameters
+    component_names = extract_component_names(data)
+    numeric_params, string_params, _ = process_all_parameters(data, component_names)
+
+    return {"numeric": numeric_params, "string": string_params}
+
+
+def print_report(fit_data, reference="A", core_level=None, parameters=None):
     """Print formatted table with average values from fit report data.
 
     This function calculates and displays averages for all numeric parameters
@@ -336,6 +498,11 @@ def print_report(fit_data, reference="A", core_level=None):
         For multi-core format, specify which core level to print. If None
         (default), all core levels are printed sequentially with spacing
         between them.
+    parameters : list of str or None, optional
+        List of parameter names to display in the table. If None (default),
+        displays default parameters: ["Label", "BE", "Rel. BE", "FWHM",
+        "Raw Area", "%At Conc"]. Use get_available_parameters() to see
+        all available parameters.
 
     Returns
     -------
@@ -363,12 +530,24 @@ def print_report(fit_data, reference="A", core_level=None):
     >>> report_dict = read_report_file("single_core_report.txt")
     >>> print_report(report_dict, reference="A")
 
+    Print with custom parameters:
+
+    >>> params = ["Label", "BE", "FWHM", "Raw Area", "RSF"]
+    >>> print_report(report_dict, parameters=params)
+
+    See available parameters:
+
+    >>> available = get_available_parameters(report_dict)
+    >>> print(available['numeric'])  # Numeric parameters
+    >>> print(available['string'])   # String parameters
+
     Notes
     -----
     - Parameters containing "Constr." in their name are excluded from display
     - String parameters are checked for consistency across measurements
     - If reference component is not found, a warning is printed and relative
       BE column is not added
+    - Default parameters: ["Label", "BE", "Rel. BE", "FWHM", "Raw Area", "%At Conc"]
     """
     # Validate input data
     if not fit_data:
@@ -396,6 +575,7 @@ def print_report(fit_data, reference="A", core_level=None):
                 parent_file_name,
                 core_level_override=core_level,
                 show_main_title=True,
+                parameters=parameters,
             )
         else:
             # Print main title once, then all core levels with subtitles
@@ -407,7 +587,8 @@ def print_report(fit_data, reference="A", core_level=None):
                     core_level_override=cl,
                     show_main_title=(idx == 0),
                     show_subtitle=True,
+                    parameters=parameters,
                 )
     else:
         # Single-core format (original behavior)
-        print_single_core_level(fit_data, reference)
+        print_single_core_level(fit_data, reference, parameters=parameters)

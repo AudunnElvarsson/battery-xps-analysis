@@ -127,6 +127,7 @@ def print_single_core_level(
     core_level_override=None,
     show_main_title=True,
     show_subtitle=False,
+    parameters=None,
 ):
     """Print formatted table of average values for a single core level.
 
@@ -156,6 +157,9 @@ def print_single_core_level(
     show_subtitle : bool, optional
         If True, print core level as a subtitle instead of in main title.
         Used when printing multiple core levels (default False).
+    parameters : list of str or None, optional
+        List of parameter names to display. If None, uses default parameters:
+        ["Label", "BE", "Rel. BE", "FWHM", "Raw Area", "%At Conc"].
 
     Returns
     -------
@@ -207,7 +211,24 @@ def print_single_core_level(
                 f"Warning: Reference component '{reference}' not found or has no BE data."
             )
 
-    all_parameters = numeric_params + string_params
+    # Filter parameters based on user selection
+    if parameters is None:
+        # Default parameters
+        default_params = ["Label", "BE", "Rel. BE", "FWHM", "Raw Area", "%At Conc"]
+        all_parameters = [
+            p for p in default_params if p in numeric_params or p in string_params
+        ]
+    else:
+        # User-specified parameters
+        all_parameters = [
+            p for p in parameters if p in numeric_params or p in string_params
+        ]
+        if not all_parameters:
+            print(f"Warning: None of the specified parameters are available.")
+            print(f"Available numeric: {numeric_params}")
+            print(f"Available string: {string_params}")
+            return
+
     if not all_parameters:
         print("No parameters found to display.")
         return

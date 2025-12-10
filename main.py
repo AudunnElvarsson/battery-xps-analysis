@@ -97,30 +97,42 @@ def main():
     # Flags to control execution
     run_convert_all_vms_in_project = False
     run_print_report = True
-    run_plot_report = True
+    run_plot_report = False
     run_plot_spectrum = False
 
     project_folder = (
         r"c:/Users/audun/OneDrive - Chalmers/Documents/Research/"
         r"1_Improving_XPS_Analysis_Methods/1_data/"
     )
-    experiment_folder = r"250221_Gr_XPS_beam_damage_and_neutralizers/3_output/"
-    save_folder = project_folder + experiment_folder
-    report_file = (
-        save_folder + r"2_beam_damage_unwashed_comp_report_F1s_O1s_C1s_P2p_Li1s.txt"
+    experiment_folder = (
+        project_folder + r"250221_Gr_XPS_beam_damage_and_neutralizers/3_output/"
     )
-    spectrum_file = save_folder + r"2_beam_damage_unwashed_spectrum_C1s.txt"
+    report_file = (
+        experiment_folder
+        + r"2_beam_damage_unwashed_comp_report_F1s_O1s_C1s_P2p_Li1s.txt"
+    )
+    spectrum_file = experiment_folder + r"2_beam_damage_unwashed_spectrum_C1s.txt"
 
-    save_param = {"save_fig": False, "format": "png", "save_folder": save_folder}
+    save_param = {
+        "save_fig": False,
+        "format": "png",
+        "experiment_folder": experiment_folder,
+    }
 
     if run_convert_all_vms_in_project:
         convert_all_vms(project_folder)
 
     if run_print_report or run_plot_report:
         report_dict = xp.read_report_file(report_file)
+        available_params = xp.get_available_parameters(report_dict)
+        print("Available parameters:", available_params)
 
         if run_print_report:
-            xp.print_report(report_dict, reference="A")
+            xp.print_report(
+                report_dict,
+                reference="A",
+                parameters=["Label", "BE", "FWHM", "RSF", "Line Shape"],
+            )
 
         if run_plot_report:
             report_parameters(report_dict, save_param=save_param)
