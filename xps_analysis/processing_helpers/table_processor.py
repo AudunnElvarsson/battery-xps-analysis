@@ -180,10 +180,15 @@ def group_rows_by_dataset(table_data, dataset_idx, tag_idx):
         by_dataset_and_core[key].append(row)
 
     # Now organize by core level with groups for each measurement
-    # Preserve the original order of datasets instead of sorting
-    result = {}
+    # Preserve the original order of both datasets and core levels
+    core_level_order = []
+    for dataset in dataset_order:
+        for key in by_dataset_and_core:
+            if key[0] == dataset and key[1] not in core_level_order:
+                core_level_order.append(key[1])
 
-    for core_level in set(k[1] for k in by_dataset_and_core):
+    result = {}
+    for core_level in core_level_order:
         result[core_level] = []
         for dataset in dataset_order:  # Use original order, not sorted
             key = (dataset, core_level)
@@ -285,6 +290,10 @@ def table_to_dict_exclude_columns(groups, header, exclude_indices):
     This variant of table_to_dict removes columns at the specified indices
     before processing, useful when grouping columns should not appear in output.
 
+    Handles datasets with different numbers of components by aligning them based
+    on component labels (Comp Label column). Missing components in a dataset are
+    filled with NaN values.
+
     Parameters
     ----------
     groups : list[list[list[str]]]
@@ -298,7 +307,8 @@ def table_to_dict_exclude_columns(groups, header, exclude_indices):
     -------
     dict[str, numpy.ndarray]
         Mapping of header -> 2D NumPy array (dtype object) with shape
-        (n_parameters, n_components).
+        (n_parameters, n_measurements). Components are aligned across measurements
+        based on their labels.
     """
 
     def parse_value(val):
@@ -317,31 +327,105 @@ def table_to_dict_exclude_columns(groups, header, exclude_indices):
     # Build filtered header
     filtered_header = [h for idx, h in enumerate(header) if idx not in exclude_indices]
 
-    result = {h: [] for h in filtered_header}
+    # Find the Comp Label index to align components across datasets
+    label_idx = None
+    name_idx = None
+    for idx, h in enumerate(header):
+        if h == "Comp Label":
+            label_idx = idx
+        if h == "Name":
+            name_idx = idx
+
+    # If we don't have Comp Label, fall back to original behavior
+    if label_idx is None or name_idx is None:
+        result = {h: [] for h in filtered_header}
+        for group in groups:
+            arr = np.array(group, dtype=object)
+            if arr.ndim == 1:
+                arr = arr.reshape(1, -1)
+            if arr.shape[1] < len(header):
+                padding = np.full(
+                    (arr.shape[0], len(header) - arr.shape[1]), "", dtype=object
+                )
+                arr = np.concatenate([arr, padding], axis=1)
+
+            for orig_idx, h in enumerate(header):
+                if orig_idx in exclude_indices:
+                    continue
+                col = arr[:, orig_idx]
+                col_converted = [parse_value(v) for v in col]
+                result[h].append(col_converted)
+
+        for h in result:
+            result[h] = np.transpose(np.array(result[h], dtype=object))
+        return result
+
+    # NEW: Align components across datasets based on labels
+    # First pass: collect all unique labels and their corresponding names
+    label_to_name = {}  # label -> component name
+    all_labels_ordered = []  # preserve order of first appearance
+
     for group in groups:
         arr = np.array(group, dtype=object)
-        # Ensure arr has enough columns - pad with empty strings if needed
         if arr.ndim == 1:
-            # Single row - reshape to 2D
             arr = arr.reshape(1, -1)
         if arr.shape[1] < len(header):
-            # Pad with empty strings if there are missing columns
             padding = np.full(
                 (arr.shape[0], len(header) - arr.shape[1]), "", dtype=object
             )
             arr = np.concatenate([arr, padding], axis=1)
 
-        # Process each column, skipping excluded indices
+        # Extract labels and names from this group
+        for row in arr:
+            label = row[label_idx] if label_idx < len(row) else ""
+            name = row[name_idx] if name_idx < len(row) else ""
+            if label and label not in label_to_name:
+                label_to_name[label] = name
+                all_labels_ordered.append(label)
+
+    # Second pass: build aligned data structure
+    result = {h: [] for h in filtered_header}
+    n_components = len(all_labels_ordered)
+
+    for group in groups:
+        arr = np.array(group, dtype=object)
+        if arr.ndim == 1:
+            arr = arr.reshape(1, -1)
+        if arr.shape[1] < len(header):
+            padding = np.full(
+                (arr.shape[0], len(header) - arr.shape[1]), "", dtype=object
+            )
+            arr = np.concatenate([arr, padding], axis=1)
+
+        # Create label-to-row mapping for this group
+        label_to_rows = {}
+        for row in arr:
+            label = row[label_idx] if label_idx < len(row) else ""
+            if label:
+                label_to_rows[label] = row
+
+        # For each parameter, create aligned array with NaN for missing components
         for orig_idx, h in enumerate(header):
             if orig_idx in exclude_indices:
                 continue
-            col = arr[:, orig_idx]
-            col_converted = [parse_value(v) for v in col]
-            result[h].append(col_converted)
 
+            aligned_col = []
+            for label in all_labels_ordered:
+                if label in label_to_rows:
+                    # Component exists in this dataset
+                    row = label_to_rows[label]
+                    value = row[orig_idx] if orig_idx < len(row) else ""
+                    aligned_col.append(parse_value(value))
+                else:
+                    # Component missing in this dataset - use NaN
+                    aligned_col.append(np.nan)
+
+            result[h].append(aligned_col)
+
+    # Transpose to get (n_components, n_measurements) shape
     for h in result:
-        # Use dtype=object to allow arrays and floats
         result[h] = np.transpose(np.array(result[h], dtype=object))
+
     return result
 
 

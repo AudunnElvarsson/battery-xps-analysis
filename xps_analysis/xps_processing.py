@@ -490,10 +490,16 @@ def print_report(fit_data, reference="A", core_level=None, parameters=None):
         For multi-core format: nested dict with core level keys (e.g., "C 1s",
         "F 1s") containing data dictionaries, plus "File Name" and "Core Level"
         metadata.
-    reference : str, optional
-        Label of the component to use as reference for relative binding energy
-        calculation (default "A"). Relative BE shows the binding energy
-        difference with respect to this reference component.
+    reference : str or dict, optional
+        Component label or name to use as reference for relative binding energy
+        calculation (default "A"). Can be:
+        - str: Single reference applied to all core levels (e.g., "A" or "LiF")
+        - dict: Maps core level names to reference components (e.g.,
+          {"C 1s": "A", "F 1s": "LiF", "O 1s": "B"})
+
+        Relative BE shows the binding energy difference with respect to this
+        reference component. For multi-core format, dict allows different
+        references per core level.
     core_level : str or None, optional
         For multi-core format, specify which core level to print. If None
         (default), all core levels are printed sequentially with spacing
@@ -524,6 +530,11 @@ def print_report(fit_data, reference="A", core_level=None, parameters=None):
     Print only C 1s data with custom reference:
 
     >>> print_report(report_dict, reference="B", core_level="C 1s")
+
+    Use different references for each core level:
+
+    >>> refs = {"C 1s": "A", "F 1s": "LiF", "O 1s": "C=O"}
+    >>> print_report(report_dict, reference=refs)
 
     Print single-core file:
 
@@ -569,9 +580,15 @@ def print_report(fit_data, reference="A", core_level=None, parameters=None):
             if core_level not in core_levels:
                 print(f"Core level '{core_level}' not found. Available: {core_levels}")
                 return
+            # Get reference for this core level
+            cl_reference = (
+                reference.get(core_level, "A")
+                if isinstance(reference, dict)
+                else reference
+            )
             print_single_core_level(
                 fit_data[core_level],
-                reference,
+                cl_reference,
                 parent_file_name,
                 core_level_override=core_level,
                 show_main_title=True,
@@ -580,9 +597,13 @@ def print_report(fit_data, reference="A", core_level=None, parameters=None):
         else:
             # Print main title once, then all core levels with subtitles
             for idx, cl in enumerate(core_levels):
+                # Get reference for this core level
+                cl_reference = (
+                    reference.get(cl, "A") if isinstance(reference, dict) else reference
+                )
                 print_single_core_level(
                     fit_data[cl],
-                    reference,
+                    cl_reference,
                     parent_file_name,
                     core_level_override=cl,
                     show_main_title=(idx == 0),

@@ -141,9 +141,10 @@ def print_single_core_level(
         Single core level data dictionary with 'Name' and parameter arrays.
         Must contain at least a 'Name' key with component names.
     reference : str, optional
-        Label of the reference component for relative BE calculation
-        (default "A"). The relative BE is calculated as the difference
-        from this component's binding energy.
+        Component label or name to use as reference for relative BE calculation
+        (default "A"). Can be component label (e.g., "A") or component name
+        (e.g., "LiF"). The relative BE is calculated as the difference from
+        this component's binding energy.
     file_name_override : str or None, optional
         Override for file name display. If None, uses fit_data['File Name'].
         Used when printing multi-core data where parent file name should
@@ -188,12 +189,18 @@ def print_single_core_level(
 
     # Calculate relative binding energies if BE data is available
     if "BE" in numeric_params:
-        # Find reference component
+        # Find reference component - try matching by label first, then by name
         reference_comp = None
         for comp_name in component_names:
             if component_data[comp_name].get("Label") == reference:
                 reference_comp = comp_name
                 break
+        # If not found by label, try matching by component name
+        if not reference_comp:
+            for comp_name in component_names:
+                if comp_name == reference:
+                    reference_comp = comp_name
+                    break
 
         if reference_comp and "BE" in component_data[reference_comp]:
             reference_be = component_data[reference_comp]["BE"]
