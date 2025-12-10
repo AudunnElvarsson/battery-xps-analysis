@@ -15,10 +15,6 @@ Public Functions
 plot_comp_report : Plot fit report parameter(s) across components and core levels
 plot_region_report : Plot ratio between total values of two core levels
 plot_spectrum : Plot XPS spectrum with optional residuals
-
-Notes
------
-
 """
 
 import matplotlib.pyplot as plt
@@ -609,16 +605,6 @@ def plot_region_report(
     else:
         print(f"Error: Unknown plot_type '{plot_type}'. Must be 'ratio' or 'total'.")
         return
-
-    if plot_here:
-        plt.show()
-
-        save_figure(
-            fig,
-            name_list=[parent_file_name],
-            save_args=save_kwargs,
-            prefix=f"{numerator.replace(' ', '')}_{denominator.replace(' ', '')}_ratio_",
-        )
 
     if plot_here:
         plt.show()
