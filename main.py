@@ -20,8 +20,8 @@ def comp_report_parameters(report_dict, save_param=None):
     selected_cores = xp.get_core_levels(report_dict)
 
     proc_param = {
-        "fit_param": "At Conc",
-        "calculate": "average",
+        "fit_param": "BE",
+        "calculate": "difference",
         # "reference": {"F 1s": "PFx", "O 1s": "B", "C 1s": "A"},
         "core_levels": selected_cores,
         "show_labels": True,
@@ -126,16 +126,16 @@ def main():
     run_convert_all_vms_in_project = False
     run_print_report = False
     run_plot_comp_report = True
-    run_plot_region_ratio = True
+    run_plot_region_ratio = False
     run_plot_spectrum = False
 
     proj_folder = (
         r"c:/Users/audun/OneDrive - Chalmers/Documents/Research/"
         r"1_Improving_XPS_Analysis_Methods/1_data/"
     )
-    exp_folder = proj_folder + r"250221_Gr_XPS_beam_damage_and_neutralizers/3_output/"
-    report_file = exp_folder + r"2_beam_damage_unwashed_comp_report.txt"
-    spectrum_file = exp_folder + r"2_beam_damage_unwashed_spectrum_C1s.txt"
+    exp_folder = proj_folder + r"250313_Gr_XPS_beam_damage_and_neutralizers/3_output/"
+    report_file = exp_folder + r"3_e_ar_beam_unwashed_comp_report.txt"
+    spectrum_file = exp_folder + r"3_e_ar_beam_unwashed_spectrum_C1s.txt"
 
     save_param = {
         "save_fig": False,

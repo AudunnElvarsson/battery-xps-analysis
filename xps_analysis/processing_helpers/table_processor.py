@@ -419,8 +419,14 @@ def table_to_dict_exclude_columns(groups, header, exclude_indices):
                     value = row[orig_idx] if orig_idx < len(row) else ""
                     aligned_col.append(parse_value(value))
                 else:
-                    # Component missing in this dataset - use NaN
-                    aligned_col.append(np.nan)
+                    # Component missing in this dataset - use NaN for numeric parameters
+                    # but use the component name for Name/Comp Label columns
+                    if h == "Name":
+                        aligned_col.append(label_to_name.get(label, label))
+                    elif h == "Comp Label":
+                        aligned_col.append(label)
+                    else:
+                        aligned_col.append(np.nan)
 
             result[h].append(aligned_col)
 
