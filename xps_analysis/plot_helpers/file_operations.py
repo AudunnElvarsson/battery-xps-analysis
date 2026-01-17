@@ -29,8 +29,8 @@ def save_figure(fig, name_list=None, save_args=None, prefix="figure"):
         Parts used to build the filename. If ``None`` or empty, a generic
         basename is used.
     save_args : dict or None
-        Options forwarded to ``Figure.savefig``. The special key
-        ``save_folder`` (if present) selects the target folder.
+        Options forwarded to ``Figure.savefig``. The special keys
+        ``save_folder`` or ``exp_folder`` (if present) select the target folder.
     prefix : str
         Optional filename prefix; if empty the prefix is omitted.
 
@@ -39,11 +39,12 @@ def save_figure(fig, name_list=None, save_args=None, prefix="figure"):
     str
         Absolute path to the saved file.
     """
-    save_folder = (
-        save_args.get("save_folder")
-        if (save_args and "save_folder" in save_args)
-        else os.getcwd()
-    )
+    # Accept both 'save_folder' and 'exp_folder' for backwards compatibility
+    save_folder = None
+    if save_args:
+        save_folder = save_args.get("save_folder") or save_args.get("exp_folder")
+    if not save_folder:
+        save_folder = os.getcwd()
     save_file, save_kwargs = _build_save_info(
         save_folder, name_list or [], save_args, prefix=prefix
     )
@@ -109,7 +110,11 @@ def _build_save_info(save_folder, name_list, save_args=None, prefix="figure"):
     save_kwargs = {"dpi": 300, "format": "png", "bbox_inches": "tight"}
     if save_args:
         # allow overriding format, dpi, bbox_inches etc.
-        save_kwargs.update({k: v for k, v in save_args.items() if k != "save_folder"})
+        # Filter out custom parameters that aren't matplotlib savefig parameters
+        custom_params = ("save_folder", "save_fig", "exp_folder")
+        save_kwargs.update(
+            {k: v for k, v in save_args.items() if k not in custom_params}
+        )
     # build a safe name from provided parts
     safe_parts = [
         re.sub(r"[^A-Za-z0-9]+", "_", str(p)).strip("_")

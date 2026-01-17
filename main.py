@@ -138,7 +138,7 @@ def main():
     spectrum_file = exp_folder + r"3_e_ar_beam_unwashed_spectrum_C1s.txt"
 
     save_param = {
-        "save_fig": False,
+        "save_fig": True,
         "format": "png",
         "exp_folder": exp_folder,
     }
