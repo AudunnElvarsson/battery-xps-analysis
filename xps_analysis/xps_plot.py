@@ -74,8 +74,9 @@ def plot_comp_report(
           concentration), "Goodness" (goodness of fit).
         - 'calculate' (str or None): Statistic to display in legend. Either
             "average" (shows mean values), "difference" (shows last - first),
-            "ratio" (shows mean area ratio when fit_param='Area'), or
-            None/empty to disable statistics and legend annotation.
+            "difference_max" (shows max - min), "ratio" (shows mean area ratio
+            when fit_param='Area'), or None/empty to disable statistics and
+            legend annotation.
         - 'reference' (str or dict): Component label or name used for both
           relative BE plotting (when fit_param='BE') and area ratio calculations
           (when calculate='ratio' and fit_param='Area'). Can be component label
@@ -276,7 +277,8 @@ def plot_region_report(
           full column name.
         - 'calculate' (str or None): Statistic to display in legend. Either
             "average" (shows mean values), "difference" (shows last - first),
-            or None/empty to disable statistics. Default is "average".
+            "difference_max" (shows max - min), or None/empty to disable
+            statistics. Default is "average".
     plot_kwargs : dict or None, optional
         Styling arguments forwarded to ``matplotlib.axes.Axes.plot``.
         Supports both full and abbreviated parameter names.
@@ -427,6 +429,9 @@ def plot_region_report(
             elif calculate_mode == "difference" and len(numeric_vals) >= 2:
                 stat_label = "diff"
                 stat_value = numeric_vals[-1] - numeric_vals[0]
+            elif calculate_mode == "difference_max" and len(numeric_vals) >= 2:
+                stat_label = "max-min"
+                stat_value = max(numeric_vals) - min(numeric_vals)
 
         # Default plot styling for ratio mode
         # If user provides a label, use it; otherwise use default
@@ -547,6 +552,9 @@ def plot_region_report(
                 elif calculate_mode == "difference" and len(numeric_vals) >= 2:
                     stat_label = "diff"
                     stat_value = numeric_vals[-1] - numeric_vals[0]
+                elif calculate_mode == "difference_max" and len(numeric_vals) >= 2:
+                    stat_label = "max-min"
+                    stat_value = max(numeric_vals) - min(numeric_vals)
 
             # Default plot styling for total mode
             # If user provides a label, use it; otherwise use core level name

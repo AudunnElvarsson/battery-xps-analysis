@@ -21,7 +21,7 @@ def comp_report_parameters(report_dict, save_param=None):
 
     proc_param = {
         "fit_param": "BE",
-        "calculate": "difference",
+        "calculate": "difference_max",
         # "reference": {"F 1s": "PFx", "O 1s": "B", "C 1s": "A"},
         "core_levels": selected_cores,
         "show_labels": True,

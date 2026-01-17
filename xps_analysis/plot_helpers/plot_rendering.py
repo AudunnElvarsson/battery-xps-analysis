@@ -617,7 +617,7 @@ def _calculate_statistic(numeric_vals, calculate):
     numeric_vals : list
         List of numeric values from the data.
     calculate : str
-        Calculation type: "average", "difference", or "ratio".
+        Calculation type: "average", "difference", "difference_max", or "ratio".
 
     Returns
     -------
@@ -631,6 +631,10 @@ def _calculate_statistic(numeric_vals, calculate):
         if len(numeric_vals) >= 2:
             return "diff", numeric_vals[-1] - numeric_vals[0]
         return "val", numeric_vals[0] if numeric_vals else 0
+    if calculate == "difference_max":
+        if len(numeric_vals) >= 2:
+            return "max-min", max(numeric_vals) - min(numeric_vals)
+        return "val", 0
     if calculate == "average":
         return "avg", np.mean(numeric_vals) if numeric_vals else 0
     if calculate == "ratio":
