@@ -27,7 +27,10 @@ def comp_report_parameters(report_dict, save_param=None):
         "show_labels": True,
         "normalize_at_conc_per_core": True,
     }
-    plot_param = {"linestyle": "-"}
+    plot_param = {
+        "linestyle": "-",
+        "colors": ["#d62728", "#2ca02c", "k", "#1fb4a8", "#1f77b4"],
+    }
 
     # Create the right number of subplots based on selected cores
     n_cores = len(selected_cores)

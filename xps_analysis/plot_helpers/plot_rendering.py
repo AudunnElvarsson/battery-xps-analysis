@@ -254,6 +254,15 @@ def plot_report_series(report_dict, ax, col_full, params, plot_options=None):
     # Detect doublet groups for color coordination
     doublet_info = _get_doublet_styling_info(names)
 
+    # Handle custom colors from params
+    custom_colors = None
+    if "colors" in params:
+        # List of colors provided
+        custom_colors = params.pop("colors")
+    elif "color" in params and isinstance(params["color"], list):
+        # Color parameter is a list
+        custom_colors = params.pop("color")
+
     # Track colors for doublet groups
     colors_used = {}
     color_idx = 0
@@ -289,7 +298,13 @@ def plot_report_series(report_dict, ax, col_full, params, plot_options=None):
 
         # Apply doublet styling if this component is part of a doublet
         plot_params = params.copy()
-        if i in doublet_info:
+
+        # Apply custom colors if provided
+        if custom_colors is not None:
+            # Use custom color for this component (cycle through if needed)
+            plot_params["color"] = custom_colors[i % len(custom_colors)]
+        elif i in doublet_info:
+            # Apply doublet styling only if custom colors not provided
             base_name, is_first = doublet_info[i]
 
             # Get or assign color for this doublet group

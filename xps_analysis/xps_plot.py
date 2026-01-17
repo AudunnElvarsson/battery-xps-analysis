@@ -103,6 +103,10 @@ def plot_comp_report(
         Styling arguments forwarded to ``matplotlib.axes.Axes.plot`` for the
         component series. These override module defaults. Supports both full
         and abbreviated parameter names (e.g., 'ls' or 'linestyle').
+        Special handling for colors:
+        - 'color' or 'colors': Can be a single color (applied to all components)
+          or a list of colors (cycled through for each component).
+          Example: {"colors": ["red", "blue", "green"]} or {"color": "#FF5733"}
     save_kwargs : dict or None, optional
         Options for saving the figure. Supported keys:
         - 'save_fig' (bool): Whether to save the figure (default False)
