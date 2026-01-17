@@ -630,11 +630,11 @@ def _calculate_statistic(numeric_vals, calculate):
     if calculate == "difference":
         if len(numeric_vals) >= 2:
             return "diff", numeric_vals[-1] - numeric_vals[0]
-        return "val", numeric_vals[0] if numeric_vals else 0
+        return "diff", numeric_vals[0] if numeric_vals else 0
     if calculate == "difference_max":
         if len(numeric_vals) >= 2:
             return "max-min", max(numeric_vals) - min(numeric_vals)
-        return "val", 0
+        return "max-min", 0
     if calculate == "average":
         return "avg", np.mean(numeric_vals) if numeric_vals else 0
     if calculate == "ratio":
