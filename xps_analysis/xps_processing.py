@@ -19,8 +19,6 @@ get_available_parameters : Get list of all parameters available in report data
 print_report : Print formatted table of average values from report data
 get_core_levels : Get list of core levels from a report dictionary
 extract_data : Unified function to extract component or core level data
-extract_component_data : Convenience wrapper for extracting component data
-extract_core_level_data : Convenience wrapper for extracting aggregated core level data
 
 File Format Support
 -------------------
@@ -979,33 +977,3 @@ def extract_data(report_dict, component=None, core_level=None, parameter=None):
                 pass
 
     return result
-
-
-# Convenience aliases for backward compatibility
-def extract_component_data(
-    report_dict, component_identifier, parameter=None, core_level=None
-):
-    """Extract data array for a specific component by name or label.
-
-    **Convenience wrapper for** ``extract_data(component=...)``.
-
-    See ``extract_data()`` for full documentation.
-    """
-    return extract_data(
-        report_dict,
-        component=component_identifier,
-        core_level=core_level,
-        parameter=parameter,
-    )
-
-
-def extract_core_level_data(report_dict, core_level, parameter=None):
-    """Extract and aggregate data for an entire core level.
-
-    **Convenience wrapper for** ``extract_data(component="Total")``.
-
-    See ``extract_data()`` for full documentation.
-    """
-    return extract_data(
-        report_dict, component="Total", core_level=core_level, parameter=parameter
-    )
