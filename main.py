@@ -25,7 +25,7 @@ def comp_report_parameters(report_dict, save_param=None):
         # "reference": {"F 1s": "PFx", "O 1s": "B", "C 1s": "A"},
         "core_levels": selected_cores,
         "show_labels": True,
-        "normalize_at_conc_per_core": True,
+        "normalize_at_conc_per_core": False,
     }
     plot_param = {
         "linestyle": "-",
@@ -136,8 +136,8 @@ def main():
         r"c:/Users/audun/OneDrive - Chalmers/Documents/Research/"
         r"1_Improving_XPS_Analysis_Methods/1_data/"
     )
-    exp_folder = proj_folder + r"250313_Gr_XPS_beam_damage_and_neutralizers/3_output/"
-    report_file = exp_folder + r"3_e_ar_beam_unwashed_comp_report.txt"
+    exp_folder = proj_folder + r"250829_Gr_XPS_washing_spatial_variance/3_output/"
+    report_file = exp_folder + r"6_line_scan_unwashed_comp_report.txt"
     spectrum_file = exp_folder + r"3_e_ar_beam_unwashed_spectrum_C1s.txt"
 
     save_param = {
