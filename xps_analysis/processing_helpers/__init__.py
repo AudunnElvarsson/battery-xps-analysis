@@ -33,6 +33,7 @@ table_to_dict : Convert grouped rows to dictionary format
 table_to_dict_exclude_columns : Convert rows excluding specific columns
 parse_report_rows : Parse report rows handling multi-core format
 label_spin_orbit_doublets : Add spin-orbit suffixes to duplicate component names
+collapse_doublet_components : Sum values for spin-orbit doublet pairs
 
 Data Analysis
 ~~~~~~~~~~~~~
@@ -69,6 +70,7 @@ from .table_processor import (
     table_to_dict_exclude_columns,
     parse_report_rows,
     label_spin_orbit_doublets,
+    collapse_doublet_components,
 )
 from .data_analyzer import (
     process_parameter,
@@ -99,6 +101,7 @@ __all__ = [
     "table_to_dict_exclude_columns",
     "parse_report_rows",
     "label_spin_orbit_doublets",
+    "collapse_doublet_components",
     # Data analysis
     "process_parameter",
     "extract_component_names",

@@ -20,6 +20,7 @@ from .plot_rendering import (
     plot_report_series,
     convert_to_relative_be,
 )
+from ..processing_helpers import collapse_doublet_components
 
 
 def _normalize_at_conc_per_core(report_dict, core_data, col_full):
@@ -86,156 +87,6 @@ def _safe_ratio(numerator, denominator):
     if denominator == 0:
         return np.nan
     return float(numerator) / float(denominator)
-
-
-def _sum_doublet_values(core_data, col_full):
-    """Sum numeric values for spin-orbit doublet components.
-
-    For components marked as doublets (e.g., P-F (3/2) and P-F (1/2)),
-    sum their values and create a new dataset with one entry per doublet pair.
-    Non-doublet components are kept as-is.
-
-    This function works for any numeric column including areas, atomic
-    concentrations, and other fit parameters.
-
-    Parameters
-    ----------
-    core_data : dict
-        Core level data dictionary.
-    col_full : str
-        Column name to sum (e.g., "Raw Area", "%At Conc").
-
-    Returns
-    -------
-    dict
-        New dictionary with doublets summed. If no doublets exist, returns
-        the original data unchanged.
-    """
-    if "Doublet Group" not in core_data or col_full not in core_data:
-        return core_data
-
-    doublet_groups = core_data["Doublet Group"]
-    if doublet_groups is None or not hasattr(doublet_groups, "__iter__"):
-        return core_data
-
-    # Check if any doublets exist
-    has_doublets = any(str(g) != "" for g in doublet_groups)
-    if not has_doublets:
-        return core_data
-
-    # Get the data array for the specified column
-    data_array = np.array(core_data[col_full], dtype=object)
-    name_array = np.array(core_data["Name"], dtype=object)
-
-    # Identify which rows to keep and which to sum
-    processed_groups = set()
-    new_rows = []
-    new_names = []
-
-    for i in range(len(doublet_groups)):
-        group = str(doublet_groups[i])
-
-        if group == "" or group in processed_groups:
-            # Not a doublet or already processed
-            if group == "":
-                # Keep non-doublet components
-                new_rows.append(i)
-                if name_array.ndim > 1:
-                    new_names.append(name_array[i, 0])
-                else:
-                    new_names.append(name_array[i])
-            continue
-
-        # Find all components in this doublet group
-        doublet_indices = [j for j, g in enumerate(doublet_groups) if str(g) == group]
-
-        if len(doublet_indices) == 2:
-            # Sum the two components
-            idx1, idx2 = doublet_indices
-            processed_groups.add(group)
-
-            # Create summed row
-            if data_array.ndim == 1:
-                summed_value = data_array[idx1] + data_array[idx2]
-            else:
-                summed_value = data_array[idx1] + data_array[idx2]
-
-            new_rows.append(idx1)  # Use first component's index as template
-            new_names.append(group)  # Use base name without suffix
-
-    # Create new core_data with summed doublets
-    summed_data = core_data.copy()
-
-    # Build new data array
-    if data_array.ndim == 1:
-        new_data = []
-        for i, orig_idx in enumerate(new_rows):
-            group = str(doublet_groups[orig_idx])
-            if group != "" and group in processed_groups:
-                # This is a doublet - sum it
-                doublet_indices = [
-                    j for j, g in enumerate(doublet_groups) if str(g) == group
-                ]
-                summed = sum(
-                    data_array[j]
-                    for j in doublet_indices
-                    if isinstance(data_array[j], (int, float, np.integer, np.floating))
-                )
-                new_data.append(summed)
-            else:
-                new_data.append(data_array[orig_idx])
-        summed_data[col_full] = np.array(new_data, dtype=object)
-    else:
-        new_data = []
-        for i, orig_idx in enumerate(new_rows):
-            group = str(doublet_groups[orig_idx])
-            if group != "" and group in processed_groups:
-                # This is a doublet - sum across measurements
-                doublet_indices = [
-                    j for j, g in enumerate(doublet_groups) if str(g) == group
-                ]
-                summed_row = np.zeros_like(data_array[orig_idx], dtype=float)
-                for j in doublet_indices:
-                    for k in range(data_array.shape[1]):
-                        val = data_array[j, k]
-                        if isinstance(val, (int, float, np.integer, np.floating)):
-                            summed_row[k] += val
-                new_data.append(summed_row)
-            else:
-                new_data.append(data_array[orig_idx])
-        summed_data[col_full] = np.array(new_data, dtype=object)
-
-    # Update Name array
-    if name_array.ndim > 1:
-        new_name_array = np.empty((len(new_names), name_array.shape[1]), dtype=object)
-        for i, name in enumerate(new_names):
-            new_name_array[i, 0] = name
-            # Copy other columns if they exist
-            orig_idx = new_rows[i]
-            for j in range(1, name_array.shape[1]):
-                new_name_array[i, j] = name_array[orig_idx, j]
-        summed_data["Name"] = new_name_array
-    else:
-        summed_data["Name"] = np.array(new_names, dtype=object)
-
-    # Update other arrays (Comp Label, etc.)
-    for key in summed_data:
-        if key in [col_full, "Name", "Doublet Group", "File Name", "Core Level"]:
-            continue
-        if isinstance(summed_data[key], np.ndarray):
-            arr = summed_data[key]
-            if arr.shape[0] == len(doublet_groups):
-                # This array needs to be filtered
-                if arr.ndim == 1:
-                    summed_data[key] = np.array(
-                        [arr[i] for i in new_rows], dtype=object
-                    )
-                else:
-                    summed_data[key] = np.array(
-                        [arr[i] for i in new_rows], dtype=object
-                    )
-
-    return summed_data
 
 
 def _find_component_index(core_data, component_label):
@@ -459,7 +310,7 @@ def plot_single_core_level(
 
     # For area and atomic concentration parameters, sum doublet components before processing
     if "Area" in col_full or col_full == "%At Conc":
-        plot_dict = _sum_doublet_values(plot_dict, col_full)
+        plot_dict = collapse_doublet_components(plot_dict, col_full)
 
     # Convert areas to ratios when requested
     if calculate_mode == "ratio" and col_full == "Raw Area":
@@ -655,7 +506,7 @@ def plot_all_core_levels(
 
         # For area and atomic concentration parameters, sum doublet components before processing
         if "Area" in col_full or col_full == "%At Conc":
-            plot_dict = _sum_doublet_values(plot_dict, col_full)
+            plot_dict = collapse_doublet_components(plot_dict, col_full)
 
         # Apply area ratio conversion per core level if requested
         if calculate_mode == "ratio" and col_full == "Raw Area":

@@ -10,6 +10,7 @@ group_rows_by_name : Group table rows by repeating name column
 group_rows_by_dataset : Group table rows by Data Set column (multi-core format)
 has_dataset_column : Check if header contains 'Data Set' or 'Iteration' column
 label_spin_orbit_doublets : Add spin-orbit suffixes to duplicate component names
+collapse_doublet_components : Sum values for spin-orbit doublet pairs
 table_to_dict : Convert grouped rows to dictionary format
 table_to_dict_exclude_columns : Convert grouped rows excluding specific columns
 parse_report_rows : Parse report data rows into structured format
@@ -164,6 +165,150 @@ def label_spin_orbit_doublets(core_data):
         core_data["Doublet Group"] = doublet_group_array
 
     return core_data
+
+
+def collapse_doublet_components(core_data, column_name):
+    """Sum numeric values for spin-orbit doublet components.
+
+    For components marked as doublets (e.g., P-F (3/2) and P-F (1/2)),
+    sum their values and create a new dataset with one entry per doublet pair.
+    Non-doublet components are kept as-is.
+
+    This function works for any numeric column including areas, atomic
+    concentrations, and other fit parameters.
+
+    Parameters
+    ----------
+    core_data : dict
+        Core level data dictionary with 'Doublet Group' field.
+    column_name : str
+        Column name to sum (e.g., "Raw Area", "%At Conc").
+
+    Returns
+    -------
+    dict
+        New dictionary with doublets summed. If no doublets exist, returns
+        the original data unchanged.
+    """
+    if "Doublet Group" not in core_data or column_name not in core_data:
+        return core_data
+
+    doublet_groups = core_data["Doublet Group"]
+    if doublet_groups is None or not hasattr(doublet_groups, "__iter__"):
+        return core_data
+
+    # Check if any doublets exist
+    has_doublets = any(str(g) != "" for g in doublet_groups)
+    if not has_doublets:
+        return core_data
+
+    # Get the data array for the specified column
+    data_array = np.array(core_data[column_name], dtype=object)
+    name_array = np.array(core_data["Name"], dtype=object)
+
+    # Identify which rows to keep and which to sum
+    processed_groups = set()
+    new_rows = []
+    new_names = []
+
+    for i in range(len(doublet_groups)):
+        group = str(doublet_groups[i])
+
+        if group == "" or group in processed_groups:
+            # Not a doublet or already processed
+            if group == "":
+                # Keep non-doublet components
+                new_rows.append(i)
+                if name_array.ndim > 1:
+                    new_names.append(name_array[i, 0])
+                else:
+                    new_names.append(name_array[i])
+            continue
+
+        # Find all components in this doublet group
+        doublet_indices = [j for j, g in enumerate(doublet_groups) if str(g) == group]
+
+        if len(doublet_indices) == 2:
+            # Sum the two components
+            idx1, idx2 = doublet_indices
+            processed_groups.add(group)
+
+            new_rows.append(idx1)  # Use first component's index as template
+            new_names.append(group)  # Use base name without suffix
+
+    # Create new core_data with summed doublets
+    summed_data = core_data.copy()
+
+    # Build new data array
+    if data_array.ndim == 1:
+        new_data = []
+        for i, orig_idx in enumerate(new_rows):
+            group = str(doublet_groups[orig_idx])
+            if group != "" and group in processed_groups:
+                # This is a doublet - sum it
+                doublet_indices = [
+                    j for j, g in enumerate(doublet_groups) if str(g) == group
+                ]
+                summed = sum(
+                    data_array[j]
+                    for j in doublet_indices
+                    if isinstance(data_array[j], (int, float, np.integer, np.floating))
+                )
+                new_data.append(summed)
+            else:
+                new_data.append(data_array[orig_idx])
+        summed_data[column_name] = np.array(new_data, dtype=object)
+    else:
+        new_data = []
+        for i, orig_idx in enumerate(new_rows):
+            group = str(doublet_groups[orig_idx])
+            if group != "" and group in processed_groups:
+                # This is a doublet - sum across measurements
+                doublet_indices = [
+                    j for j, g in enumerate(doublet_groups) if str(g) == group
+                ]
+                summed_row = np.zeros_like(data_array[orig_idx], dtype=float)
+                for j in doublet_indices:
+                    for k in range(data_array.shape[1]):
+                        val = data_array[j, k]
+                        if isinstance(val, (int, float, np.integer, np.floating)):
+                            summed_row[k] += val
+                new_data.append(summed_row)
+            else:
+                new_data.append(data_array[orig_idx])
+        summed_data[column_name] = np.array(new_data, dtype=object)
+
+    # Update Name array
+    if name_array.ndim > 1:
+        new_name_array = np.empty((len(new_names), name_array.shape[1]), dtype=object)
+        for i, name in enumerate(new_names):
+            new_name_array[i, 0] = name
+            # Copy other columns if they exist
+            orig_idx = new_rows[i]
+            for j in range(1, name_array.shape[1]):
+                new_name_array[i, j] = name_array[orig_idx, j]
+        summed_data["Name"] = new_name_array
+    else:
+        summed_data["Name"] = np.array(new_names, dtype=object)
+
+    # Update other arrays (Comp Label, etc.)
+    for key in summed_data:
+        if key in [column_name, "Name", "Doublet Group", "File Name", "Core Level"]:
+            continue
+        if isinstance(summed_data[key], np.ndarray):
+            arr = summed_data[key]
+            if arr.shape[0] == len(doublet_groups):
+                # This array needs to be filtered
+                if arr.ndim == 1:
+                    summed_data[key] = np.array(
+                        [arr[i] for i in new_rows], dtype=object
+                    )
+                else:
+                    summed_data[key] = np.array(
+                        [arr[i] for i in new_rows], dtype=object
+                    )
+
+    return summed_data
 
 
 def group_rows_by_dataset(table_data, dataset_idx, tag_idx):
