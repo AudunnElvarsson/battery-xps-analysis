@@ -8,7 +8,6 @@ Public API
 get_column_name : Map short parameter names to full column headers
 update_plot_params : Merge default plotting parameters with user overrides
 should_plot_key : Decide whether a key should be plotted
-convert_to_relative_be : Convert BE values to relative values vs reference
 plot_report_series : Plot fit report data series
 plot_spectrum_series : Plot spectrum data series
 
@@ -152,50 +151,6 @@ def should_plot_key(key, x_axis, normalised_residual, plot_items=None):
 
     # Everything else is treated as a component
     return "components" in plot_items_lower
-
-
-def convert_to_relative_be(report_dict, col_full, reference):
-    """Convert binding energy values to relative values with respect to a reference.
-
-    Parameters
-    ----------
-    report_dict : dict
-        Report dictionary containing BE data and component labels.
-    col_full : str
-        Full column name for binding energy (e.g., "Binding Energy (eV)").
-    reference : str
-        Component label or name to use as reference (e.g., "A" or "PFx").
-
-    Returns
-    -------
-    dict
-        New dictionary with relative BE values, or original dict if conversion fails.
-    """
-    if col_full not in report_dict:
-        return report_dict
-
-    be_data = report_dict.get(col_full)
-    if be_data is None:
-        return report_dict
-
-    # Find reference component index (searches both labels and names)
-    ref_idx = _find_reference_index(report_dict, reference)
-    if ref_idx is None:
-        print(
-            f"Warning: Reference component '{reference}' not found. Using absolute BE."
-        )
-        return report_dict
-
-    # Get reference BE value
-    ref_be = _get_reference_be(be_data, ref_idx)
-    if ref_be is None:
-        print("Warning: Reference BE is not numeric. Using absolute BE.")
-        return report_dict
-
-    # Create new dict with relative BE
-    new_dict = report_dict.copy()
-    new_dict["Relative Binding Energy (eV)"] = _convert_be_array(be_data, ref_be)
-    return new_dict
 
 
 def plot_report_series(report_dict, ax, col_full, params, plot_options=None):
@@ -394,93 +349,6 @@ def plot_spectrum_series(spectrum_dict, ax, x_values, plot_options):
         handles.append(line)
         labels.append(key)
     return handles, labels
-
-
-def _find_reference_index(report_dict, reference):
-    """Find the index of the reference component by label or name.
-
-    Searches both 'Comp Label' (e.g., A, B, C) and 'Name' (e.g., LiF, PFx)
-    fields to find a matching component.
-
-    Parameters
-    ----------
-    report_dict : dict
-        Report dictionary containing 'Comp Label' and/or 'Name' fields.
-    reference : str
-        Reference component label or name to find.
-
-    Returns
-    -------
-    int or None
-        Index of reference component, or None if not found.
-    """
-    # Try Comp Label first (typically single letters like A, B, C)
-    comp_labels = report_dict.get("Comp Label")
-    if comp_labels is not None:
-        comp_labels = np.array(comp_labels, dtype=object)
-        for i in range(comp_labels.shape[0]):
-            label = comp_labels[i, 0] if comp_labels.ndim > 1 else comp_labels[i]
-            if str(label) == str(reference):
-                return i
-
-    # Try Name field (chemical species names)
-    names = report_dict.get("Name")
-    if names is not None:
-        names = np.array(names, dtype=object)
-        for i in range(names.shape[0]):
-            name = names[i, 0] if names.ndim > 1 else names[i]
-            if str(name) == str(reference):
-                return i
-
-    return None
-
-
-def _get_reference_be(be_data, ref_idx):
-    """Extract reference BE value from data array.
-
-    Parameters
-    ----------
-    be_data : np.ndarray
-        Binding energy data array.
-    ref_idx : int
-        Index of reference component.
-
-    Returns
-    -------
-    float or None
-        Reference BE value, or None if not numeric.
-    """
-    ref_be = be_data[ref_idx, 0] if be_data.ndim > 1 else be_data[ref_idx]
-    if isinstance(ref_be, (int, float, np.integer, np.floating)):
-        return float(ref_be)
-    return None
-
-
-def _convert_be_array(be_data, ref_be):
-    """Convert BE array to relative values.
-
-    Parameters
-    ----------
-    be_data : np.ndarray
-        Original binding energy data.
-    ref_be : float
-        Reference BE value to subtract.
-
-    Returns
-    -------
-    np.ndarray
-        Array with relative BE values.
-    """
-    rel_be_data = np.array(be_data, dtype=object)
-    for i in range(rel_be_data.shape[0]):
-        if rel_be_data.ndim > 1:
-            for j in range(rel_be_data.shape[1]):
-                if isinstance(rel_be_data[i, j], (int, float, np.integer, np.floating)):
-                    rel_be_data[i, j] = float(rel_be_data[i, j]) - ref_be
-        else:
-            if isinstance(rel_be_data[i], (int, float, np.integer, np.floating)):
-                rel_be_data[i] = float(rel_be_data[i]) - ref_be
-    return rel_be_data
 
 
 def _get_comp_label(names, index, show_label=False, comp_labels=None):
