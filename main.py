@@ -20,7 +20,7 @@ def comp_report_parameters(report_dict, save_param=None):
     selected_cores = xp.get_core_levels(report_dict)
 
     proc_param = {
-        "fit_param": "BE",
+        "fit_param": "At Conc",
         "calculate": "difference_max",
         # "reference": {"F 1s": "PFx", "O 1s": "B", "C 1s": "A"},
         "core_levels": selected_cores,
@@ -141,7 +141,7 @@ def main():
     spectrum_file = exp_folder + r"3_e_ar_beam_unwashed_spectrum_C1s.txt"
 
     save_param = {
-        "save_fig": True,
+        "save_fig": False,
         "format": "png",
         "exp_folder": exp_folder,
     }
