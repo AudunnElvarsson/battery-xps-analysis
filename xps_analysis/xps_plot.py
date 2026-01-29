@@ -53,6 +53,12 @@ def plot_comp_report(
     atomic concentration) for each component. Average or difference values
     are shown in the legend with monospace formatting for alignment.
 
+    **Spin-Orbit Doublets**: When plotting area or atomic concentration,
+    spin-orbit split components (e.g., P 2p3/2 and P 2p1/2) are automatically
+    combined to show the total value for the chemical species. This ensures
+    that atomic concentrations reflect the total amount of the element in that
+    chemical state, not split between the doublet components.
+
     Parameters
     ----------
     report_dict : dict
