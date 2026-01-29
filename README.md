@@ -148,16 +148,19 @@ battery-xps-analysis/
 │   ├── xps_plot.py            # High-level plotting functions
 │   ├── xps_utilities.py       # Utility functions (file conversion, etc.)
 │   ├── plot_helpers/          # Plotting utility modules
-│   │   ├── file_operations.py
-│   │   ├── axis_management.py
-│   │   ├── plot_rendering.py
-│   │   └── report_plotting.py
+│   │   ├── file_operations.py    # Figure saving and filename generation
+│   │   ├── axis_management.py    # Axis setup and configuration
+│   │   ├── plot_rendering.py     # Core plotting logic
+│   │   └── report_plotting.py    # Report-specific plotting
 │   └── processing_helpers/    # Data processing utilities
-│       ├── file_parser.py
-│       ├── table_processor.py
-│       ├── data_analyzer.py
-│       ├── formatter.py
-│       └── core_level_extractor.py
+│       ├── file_parser.py           # File reading and parsing
+│       ├── table_processor.py       # Table parsing and doublets
+│       ├── data_analyzer.py         # Parameter extraction
+│       ├── data_transformer.py      # Normalization and transformations
+│       ├── formatter.py             # Output formatting
+│       └── core_level_extractor.py  # Core level name extraction
+├── guides/                    # Documentation
+│   └── FEATURE_SUMMARY.md    # Feature documentation
 ├── main.py                    # Example usage script
 ├── pyproject.toml            # Package configuration
 └── README.md                 # This file
