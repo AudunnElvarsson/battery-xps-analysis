@@ -19,6 +19,7 @@ get_available_parameters : Get list of all parameters available in report data
 print_report : Print formatted table of average values from report data
 get_core_levels : Get list of core levels from a report dictionary
 extract_component_data : Extract data array for a specific component by name or label
+extract_core_level_data : Extract and aggregate data for an entire core level
 
 File Format Support
 -------------------
@@ -82,6 +83,7 @@ All parameter names from the original data file are preserved, including:
 """
 
 import os
+import numpy as np
 
 # Import parsing utilities from submodules
 from .processing_helpers import (
@@ -751,3 +753,169 @@ def extract_component_data(
         print(f"Warning: Component '{component_identifier}' not found.")
 
     return None
+
+
+def extract_core_level_data(report_dict, core_level):
+    """Extract and aggregate data for an entire core level.
+
+    This function aggregates component data to provide core level totals and
+    averages. Atomic concentrations and areas are summed across all components,
+    while binding energy and FWHM are averaged across components.
+
+    Parameters
+    ----------
+    report_dict : dict
+        Report dictionary from ``read_report_file()``. Must be a multi-core
+        level report (see Notes).
+    core_level : str
+        Core level name to aggregate (e.g., "C 1s", "F 1s", "O 1s").
+
+    Returns
+    -------
+    dict
+        Dictionary containing aggregated core level data with the following keys:
+        - "Atomic Concentration": 1D array of summed atomic concentrations across
+          all components in this core level, one value per measurement
+        - "Area": 1D array of summed peak areas across all components
+        - "Binding Energy": 1D array of average binding energies across components
+        - "FWHM": 1D array of average FWHMs across components
+        - "n_components": Integer count of components in this core level
+        - "component_names": List of component names in this core level
+
+    Examples
+    --------
+    Aggregate a core level from a multi-core report:
+
+    >>> import xps_analysis.xps_processing as xp
+    >>> report = xp.read_report_file("multicore_report.txt")
+    >>> c1s_data = xp.extract_core_level_data(report, "C 1s")
+    >>> print(f"Total C 1s concentration: {c1s_data['Atomic Concentration']}")
+    >>> print(f"Number of components: {c1s_data['n_components']}")
+    >>> print(f"Average BE: {c1s_data['Binding Energy']}")
+
+    Extract and compare multiple core levels:
+
+    >>> core_levels = xp.get_core_levels(report)
+    >>> aggregated = {}
+    >>> for core in core_levels:
+    ...     aggregated[core] = xp.extract_core_level_data(report, core)
+    >>>
+    >>> # Compare total concentrations
+    >>> for core, data in aggregated.items():
+    ...     print(f"{core}: {data['Atomic Concentration'][0]:.1f}%")
+
+    Notes
+    -----
+    This function is designed for multi-core level reports where you want to
+    treat all components in a core level as a single entity. For single-core
+    reports or to work with individual components, use ``extract_component_data()``.
+
+    Aggregation rules:
+    - **Atomic Concentration** and **Area**: Summed across components
+    - **Binding Energy** and **FWHM**: Averaged across components
+    - Only numeric values are included in aggregations
+    """
+    # Check if core_level exists
+    if core_level not in report_dict:
+        available = get_core_levels(report_dict)
+        print(
+            f"Warning: Core level '{core_level}' not found. " f"Available: {available}"
+        )
+        return None
+
+    data = report_dict[core_level]
+
+    # Extract component data
+    at_conc = data.get("%At Conc")
+    area = data.get("Raw Area")
+    be = data.get("Binding Energy (eV)")
+    fwhm = data.get("FWHM")
+    names = data.get("Name")
+
+    if at_conc is None:
+        print(f"Error: No atomic concentration data found in {core_level}")
+        return None
+
+    n_components = at_conc.shape[0]
+    n_measurements = at_conc.shape[1] if at_conc.ndim > 1 else 1
+
+    # Extract component names
+    component_names = []
+    if names is not None:
+        for i in range(n_components):
+            name = names[i, 0] if names.ndim > 1 else names[i]
+            component_names.append(str(name))
+
+    # Initialize result arrays
+    at_conc_sum = np.zeros(n_measurements)
+    area_sum = np.zeros(n_measurements) if area is not None else None
+    be_avg = np.zeros(n_measurements) if be is not None else None
+    fwhm_avg = np.zeros(n_measurements) if fwhm is not None else None
+
+    # Aggregate data
+    be_count = np.zeros(n_measurements)
+    fwhm_count = np.zeros(n_measurements)
+
+    for comp_idx in range(n_components):
+        # Sum atomic concentrations
+        for meas_idx in range(n_measurements):
+            at_conc_val = (
+                at_conc[comp_idx, meas_idx] if at_conc.ndim > 1 else at_conc[comp_idx]
+            )
+            if isinstance(at_conc_val, (int, float, np.integer, np.floating)):
+                at_conc_sum[meas_idx] += float(at_conc_val)
+
+        # Sum areas
+        if area is not None:
+            for meas_idx in range(n_measurements):
+                area_val = area[comp_idx, meas_idx] if area.ndim > 1 else area[comp_idx]
+                if isinstance(area_val, (int, float, np.integer, np.floating)):
+                    area_sum[meas_idx] += float(area_val)
+
+        # Average binding energies
+        if be is not None:
+            for meas_idx in range(n_measurements):
+                be_val = be[comp_idx, meas_idx] if be.ndim > 1 else be[comp_idx]
+                if isinstance(be_val, (int, float, np.integer, np.floating)):
+                    be_avg[meas_idx] += float(be_val)
+                    be_count[meas_idx] += 1
+
+        # Average FWHMs
+        if fwhm is not None:
+            for meas_idx in range(n_measurements):
+                fwhm_val = fwhm[comp_idx, meas_idx] if fwhm.ndim > 1 else fwhm[comp_idx]
+                if isinstance(fwhm_val, (int, float, np.integer, np.floating)):
+                    fwhm_avg[meas_idx] += float(fwhm_val)
+                    fwhm_count[meas_idx] += 1
+
+    # Compute averages (avoid division by zero)
+    if be is not None:
+        be_avg = np.divide(
+            be_avg, be_count, out=np.full_like(be_avg, np.nan), where=be_count > 0
+        )
+
+    if fwhm is not None:
+        fwhm_avg = np.divide(
+            fwhm_avg,
+            fwhm_count,
+            out=np.full_like(fwhm_avg, np.nan),
+            where=fwhm_count > 0,
+        )
+
+    # Build result dictionary
+    result = {
+        "Atomic Concentration": at_conc_sum,
+        "n_components": n_components,
+        "component_names": component_names,
+    }
+
+    if area_sum is not None:
+        result["Area"] = area_sum
+
+    if be_avg is not None:
+        result["Binding Energy"] = be_avg
+
+    if fwhm_avg is not None:
+        result["FWHM"] = fwhm_avg
+
+    return result
