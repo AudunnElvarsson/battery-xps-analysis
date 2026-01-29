@@ -86,4 +86,3 @@ def _get_version():
 
 
 VERSION = _get_version()
-print(f"Welcome to version {VERSION} of the xps_analysis package!\n")
