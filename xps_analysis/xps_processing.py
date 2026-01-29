@@ -18,6 +18,7 @@ read_spectrum_file : Parse XPS spectrum data files into dictionaries
 get_available_parameters : Get list of all parameters available in report data
 print_report : Print formatted table of average values from report data
 get_core_levels : Get list of core levels from a report dictionary
+extract_component_data : Extract data array for a specific component by name or label
 
 File Format Support
 -------------------
@@ -613,3 +614,140 @@ def print_report(fit_data, reference="A", core_level=None, parameters=None):
     else:
         # Single-core format (original behavior)
         print_single_core_level(fit_data, reference, parameters=parameters)
+
+
+def extract_component_data(
+    report_dict, component_identifier, parameter="%At Conc", core_level=None
+):
+    """Extract data array for a specific component from a report dictionary.
+
+    This function searches for a component by its label (e.g., "A", "B") or
+    name (e.g., "LiF", "C-C / C-H") and returns the corresponding data array
+    for the specified parameter across all measurements.
+
+    Parameters
+    ----------
+    report_dict : dict
+        Report dictionary from ``read_report_file()``. Can be either single
+        or multi-core level format.
+    component_identifier : str
+        Component label (e.g., "A", "B", "C") or component name
+        (e.g., "LiF", "P-F", "C-C / C-H") to search for.
+    parameter : str, optional
+        Parameter to extract. Common values include:
+        - "%At Conc" (default) - Atomic concentration
+        - "Binding Energy (eV)" or "BE" - Binding energy
+        - "Raw Area" or "Area" - Peak area
+        - "FWHM" - Full width at half maximum
+        Default is "%At Conc".
+    core_level : str, optional
+        Core level name (e.g., "C 1s", "F 1s"). Required for multi-core
+        level reports; ignored for single-core level reports.
+
+    Returns
+    -------
+    numpy.ndarray or None
+        1D array containing the parameter values across all measurements
+        for the specified component. Returns None if the component or
+        parameter is not found.
+
+    Examples
+    --------
+    Extract atomic concentration for a component in single-core report:
+
+    >>> import xps_analysis.xps_processing as xp
+    >>> report = xp.read_report_file("C1s_report.txt")
+    >>> lif_at_conc = xp.extract_component_data(report, "LiF")
+    >>> print(lif_at_conc)
+    [25.3 26.1 24.8 25.9]
+
+    Extract binding energy for a component in multi-core report:
+
+    >>> report = xp.read_report_file("multicore_report.txt")
+    >>> be_values = xp.extract_component_data(
+    ...     report, "C-C / C-H", parameter="BE", core_level="C 1s"
+    ... )
+
+    Extract by component label instead of name:
+
+    >>> at_conc = xp.extract_component_data(report, "A", core_level="F 1s")
+
+    Notes
+    -----
+    - Searches both "Comp Label" and "Name" fields for the identifier
+    - Parameter name shortcuts are automatically expanded (e.g., "BE" → "Binding Energy (eV)")
+    - For multi-core reports, core_level must be specified
+    - Returns None with a warning if component or parameter not found
+    """
+    from .plot_helpers.plot_rendering import get_column_name
+
+    # Expand parameter shortcuts to full names
+    param_full = get_column_name(parameter)
+
+    # Handle multi-core level reports
+    if core_level is not None:
+        if core_level not in report_dict:
+            available = get_core_levels(report_dict)
+            print(
+                f"Warning: Core level '{core_level}' not found. "
+                f"Available: {available}"
+            )
+            return None
+        data = report_dict[core_level]
+    else:
+        # Check if this is actually a multi-core report
+        core_levels = get_core_levels(report_dict)
+        if core_levels:
+            print(
+                f"Warning: This is a multi-core level report. "
+                f"Please specify core_level parameter. Available: {core_levels}"
+            )
+            return None
+        data = report_dict
+
+    # Check if parameter exists
+    if param_full not in data:
+        available = get_available_parameters({core_level: data} if core_level else data)
+        print(
+            f"Warning: Parameter '{param_full}' not found. "
+            f"Available numeric parameters: {available['numeric']}"
+        )
+        return None
+
+    param_data = data[param_full]
+
+    # Search by Comp Label first (typically single letters like A, B, C)
+    comp_labels = data.get("Comp Label")
+    if comp_labels is not None:
+        for i in range(comp_labels.shape[0]):
+            label = comp_labels[i, 0] if comp_labels.ndim > 1 else comp_labels[i]
+            if str(label) == str(component_identifier):
+                return param_data[i, :]
+
+    # Search by Name (chemical species names)
+    names = data.get("Name")
+    if names is not None:
+        for i in range(names.shape[0]):
+            name = names[i, 0] if names.ndim > 1 else names[i]
+            if str(name) == str(component_identifier):
+                return param_data[i, :]
+
+    # Component not found
+    if names is not None and comp_labels is not None:
+        available_labels = [
+            str(comp_labels[i, 0] if comp_labels.ndim > 1 else comp_labels[i])
+            for i in range(comp_labels.shape[0])
+        ]
+        available_names = [
+            str(names[i, 0] if names.ndim > 1 else names[i])
+            for i in range(names.shape[0])
+        ]
+        print(
+            f"Warning: Component '{component_identifier}' not found.\n"
+            f"Available labels: {available_labels}\n"
+            f"Available names: {available_names}"
+        )
+    else:
+        print(f"Warning: Component '{component_identifier}' not found.")
+
+    return None
