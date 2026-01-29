@@ -18,189 +18,14 @@ from .plot_rendering import (
     get_column_name,
     update_plot_params,
     plot_report_series,
-    convert_to_relative_be,
 )
-from ..processing_helpers import collapse_doublet_components
-
-
-def _normalize_at_conc_per_core(report_dict, core_data, col_full):
-    """Normalize atomic concentration values to sum to 100% per core level.
-
-    Parameters
-    ----------
-    report_dict : dict
-        The data dictionary to normalize (modified in place).
-    core_data : dict
-        Reference to the core data being plotted.
-    col_full : str
-        The full column name to normalize.
-
-    Returns
-    -------
-    dict
-        A copy of core_data with normalized atomic concentration values.
-    """
-    if col_full != "%At Conc":
-        return core_data
-
-    # Create a copy to avoid modifying the original
-    normalized_data = core_data.copy()
-
-    if "%At Conc" not in normalized_data:
-        return normalized_data
-
-    at_conc_data = np.array(normalized_data["%At Conc"], dtype=object)
-
-    # Normalize each measurement to sum to 100%
-    if at_conc_data.ndim > 1:
-        for measurement_idx in range(at_conc_data.shape[1]):
-            # Extract values for this measurement
-            values = []
-            indices = []
-            for comp_idx in range(at_conc_data.shape[0]):
-                val = at_conc_data[comp_idx, measurement_idx]
-                if isinstance(val, (int, float, np.floating)):
-                    values.append(val)
-                    indices.append(comp_idx)
-
-            # Normalize if we have valid numeric values
-            if values:
-                total = sum(values)
-                if total > 0:
-                    scale_factor = 100.0 / total
-                    for comp_idx, val in zip(indices, values):
-                        at_conc_data[comp_idx, measurement_idx] = val * scale_factor
-
-        normalized_data["%At Conc"] = at_conc_data
-
-    return normalized_data
-
-
-def _safe_ratio(numerator, denominator):
-    """Compute a safe ratio, returning NaN when division is invalid."""
-    if not isinstance(numerator, (int, float, np.integer, np.floating)):
-        return np.nan
-    if denominator is None or not isinstance(
-        denominator, (int, float, np.integer, np.floating)
-    ):
-        return np.nan
-    if denominator == 0:
-        return np.nan
-    return float(numerator) / float(denominator)
-
-
-def _find_component_index(core_data, component_label):
-    """Return the row index for a given component label or name.
-
-    Searches both 'Comp Label' and 'Name' fields to find a match.
-    Component labels are typically single letters (A, B, C), while
-    component names are chemical species (LiF, PFx, C-C / C-H).
-    """
-    if not component_label:
-        return 0
-
-    # Try Comp Label first (typically single letters like A, B, C)
-    comp_labels = core_data.get("Comp Label")
-    if comp_labels is not None:
-        comp_labels = np.array(comp_labels, dtype=object)
-        for idx in range(comp_labels.shape[0]):
-            label = comp_labels[idx, 0] if comp_labels.ndim > 1 else comp_labels[idx]
-            if str(label) == str(component_label):
-                return idx
-
-    # Try Name field (chemical species names)
-    names = core_data.get("Name")
-    if names is not None:
-        names = np.array(names, dtype=object)
-        for idx in range(names.shape[0]):
-            name = names[idx, 0] if names.ndim > 1 else names[idx]
-            if str(name) == str(component_label):
-                return idx
-
-    return None
-
-
-def _get_reference_area_series(core_data, col_full, component_label=None):
-    """Return the reference component's area series for ratio calculations."""
-    if core_data is None or col_full not in core_data:
-        return None
-
-    area_array = np.array(core_data.get(col_full), dtype=object)
-    if area_array.size == 0:
-        return None
-
-    ref_idx = _find_component_index(core_data, component_label)
-    if ref_idx is None:
-        return None
-
-    if area_array.ndim == 1:
-        return area_array[ref_idx] if ref_idx < area_array.shape[0] else None
-
-    if ref_idx >= area_array.shape[0]:
-        return None
-
-    return area_array[ref_idx]
-
-
-def _apply_area_ratio(core_data, col_full, reference_series, reference_label=None):
-    """Create a copy of core_data with area values converted to ratios.
-
-    The reference component is excluded from the output unless it's the only component,
-    in which case it's kept to show a ratio of 1.
-    """
-    if reference_series is None or col_full not in core_data:
-        return core_data, col_full
-
-    area_array = np.array(core_data.get(col_full), dtype=object)
-    ref_array = np.array(reference_series, dtype=object).flatten()
-
-    # Find the reference component index
-    ref_idx = _find_component_index(core_data, reference_label)
-
-    # Get the actual component name (not label) for the reference
-    ref_component_name = reference_label
-    if ref_idx is not None:
-        names = core_data.get("Name")
-        if names is not None:
-            names_array = np.array(names, dtype=object)
-            if names_array.ndim > 1 and names_array.shape[1] > 1:
-                # Use the component name (column 1) instead of label (column 0)
-                ref_component_name = names_array[ref_idx, 1]
-            elif names_array.ndim == 1:
-                ref_component_name = names_array[ref_idx]
-
-    if area_array.ndim == 1:
-        ratio_array = np.empty_like(area_array, dtype=object)
-        for j in range(area_array.shape[0]):
-            ref_val = ref_array[j] if j < ref_array.shape[0] else None
-            ratio_array[j] = _safe_ratio(area_array[j], ref_val)
-    else:
-        ratio_array = np.empty_like(area_array, dtype=object)
-        for i in range(area_array.shape[0]):
-            for j in range(area_array.shape[1]):
-                ref_val = ref_array[j] if j < ref_array.shape[0] else None
-                ratio_array[i, j] = _safe_ratio(area_array[i, j], ref_val)
-
-    new_col = "Area Ratio"
-    if ref_component_name:
-        new_col = f"Area Ratio (ref comp {ref_component_name})"
-
-    ratio_dict = core_data.copy()
-    ratio_dict[new_col] = ratio_array
-
-    # Check if there's only one component
-    num_components = area_array.shape[0]
-
-    # Remove the reference component from the output only if there are multiple components
-    if ref_idx is not None and num_components > 1:
-        for key in ratio_dict:
-            if key in ["Name", "Comp Label", new_col, col_full]:
-                arr = np.array(ratio_dict[key], dtype=object)
-                if arr.ndim > 0 and arr.shape[0] > ref_idx:
-                    # Remove the reference component row
-                    ratio_dict[key] = np.delete(arr, ref_idx, axis=0)
-
-    return ratio_dict, new_col
+from ..processing_helpers import (
+    collapse_doublet_components,
+    normalize_at_conc_per_core,
+    calculate_area_ratios,
+    convert_to_relative_be,
+    find_component_index,
+)
 
 
 def configure_report_axes(ax, col_full, core_level):
@@ -320,27 +145,20 @@ def plot_single_core_level(
         else:
             ref_component_label = reference
 
-        ratio_base = ratio_reference_core_data or plot_dict
-        ratio_series = _get_reference_area_series(
-            ratio_base, col_full, ref_component_label
-        )
+        # Use provided reference or default to first component
+        if not ref_component_label:
+            names = plot_dict.get("Name") or plot_dict.get("Comp Label")
+            names = np.array(names, dtype=object) if names is not None else None
+            if names is not None and names.shape[0] > 0:
+                ref_component_label = str(names[0, 0] if names.ndim > 1 else names[0])
 
-        if ratio_series is None:
-            print(
-                f"Warning: Unable to compute area ratio for {core_level_name}; using raw areas instead."
+        if ref_component_label:
+            plot_dict, col_full = calculate_area_ratios(
+                plot_dict, col_full, ref_component_label
             )
         else:
-            # Use provided reference or default to first component
-            ref_label = ref_component_label
-            if not ref_label:
-                names = plot_dict.get("Name") or plot_dict.get("Comp Label")
-                names = np.array(names, dtype=object) if names is not None else None
-                if names is not None and names.shape[0] > 0:
-                    ref_label = str(names[0, 0] if names.ndim > 1 else names[0])
-                else:
-                    ref_label = "?"
-            plot_dict, col_full = _apply_area_ratio(
-                plot_dict, col_full, ratio_series, ref_label
+            print(
+                f"Warning: Unable to determine reference component for {core_level_name}; using raw areas instead."
             )
 
     # Convert to relative BE if requested
@@ -515,33 +333,27 @@ def plot_all_core_levels(
             else:
                 ref_component_label = reference
 
-            ratio_reference_series = _get_reference_area_series(
-                plot_dict, col_full, ref_component_label
-            )
+            # Use provided reference or default to first component
+            if not ref_component_label:
+                names = plot_dict.get("Name") or plot_dict.get("Comp Label")
+                names = np.array(names, dtype=object) if names is not None else None
+                if names is not None and names.shape[0] > 0:
+                    ref_component_label = str(
+                        names[0, 0] if names.ndim > 1 else names[0]
+                    )
 
-            if ratio_reference_series is None:
-                print(
-                    f"Warning: Unable to compute area ratio for {core_level}; using raw areas instead."
+            if ref_component_label:
+                plot_dict, plot_col = calculate_area_ratios(
+                    plot_dict, col_full, ref_component_label
                 )
             else:
-                # Use provided reference or default to first component
-                ref_label = ref_component_label
-                if not ref_label:
-                    names = plot_dict.get("Name")
-                    if names is None:
-                        names = plot_dict.get("Comp Label")
-                    names = np.array(names, dtype=object) if names is not None else None
-                    if names is not None and names.shape[0] > 0:
-                        ref_label = str(names[0, 0] if names.ndim > 1 else names[0])
-                    else:
-                        ref_label = "?"
-                plot_dict, plot_col = _apply_area_ratio(
-                    plot_dict, col_full, ratio_reference_series, ref_label
+                print(
+                    f"Warning: Unable to determine reference component for {core_level}; using raw areas instead."
                 )
 
         # Normalize atomic concentration per core level if requested
         if normalize_at_conc and col_full == "%At Conc":
-            plot_dict = _normalize_at_conc_per_core(report_dict, plot_dict, col_full)
+            plot_dict = normalize_at_conc_per_core(plot_dict, col_full)
 
         # Convert to relative BE if needed
         if reference and "Binding Energy" in col_full:
