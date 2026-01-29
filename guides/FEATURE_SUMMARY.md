@@ -32,21 +32,24 @@ Each core level's components sum to 100% independently. This allows for easier c
 
 ### Code Changes
 
-#### 1. `xps_analysis/plot_helpers/report_plotting.py`
+#### 1. `xps_analysis/processing_helpers/data_transformer.py`
 
-- Added `_normalize_at_conc_per_core()` helper function
+- Contains `normalize_at_conc_per_core()` function
   - Normalizes atomic concentration data so each core level's components sum to 100%
   - Scales per measurement (column) independently
+  - Part of the data transformation utilities alongside ratio calculations and relative BE conversion
+
+#### 2. `xps_analysis/plot_helpers/report_plotting.py`
 
 - Modified `plot_all_core_levels()` function
   - Extracts `normalize_at_conc_per_core` parameter from `proc_kwargs`
-  - Applies normalization before plotting when requested
+  - Calls `normalize_at_conc_per_core()` from processing_helpers before plotting when requested
 
-#### 2. `xps_analysis/xps_plot.py`
+#### 3. `xps_analysis/xps_plot.py`
 
-- Updated `plot_report()` docstring
-  - Added documentation for new `normalize_at_conc_per_core` parameter
-  - Explains default behavior and per-core-level behavior
+- Updated `plot_comp_report()` docstring
+  - Added documentation for `normalize_at_conc_per_core` parameter
+  - Explains default behavior (all components sum to 100%) and per-core-level behavior (each core level sums to 100%)
 
 #### 3. `main.py`
 
@@ -111,9 +114,10 @@ Each core level sums to 100% ✓
 
 ## Files Modified
 
-1. `xps_analysis/plot_helpers/report_plotting.py` - Core implementation
-2. `xps_analysis/xps_plot.py` - API documentation
-3. `main.py` - Test/demonstration code
+1. `xps_analysis/processing_helpers/data_transformer.py` - Core implementation of normalization
+2. `xps_analysis/plot_helpers/report_plotting.py` - Integration with plotting
+3. `xps_analysis/xps_plot.py` - API documentation
+4. `main.py` - Test/demonstration code
 
 ## Next Steps (Optional)
 
