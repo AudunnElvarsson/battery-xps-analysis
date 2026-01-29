@@ -18,8 +18,9 @@ read_spectrum_file : Parse XPS spectrum data files into dictionaries
 get_available_parameters : Get list of all parameters available in report data
 print_report : Print formatted table of average values from report data
 get_core_levels : Get list of core levels from a report dictionary
-extract_component_data : Extract data array for a specific component by name or label
-extract_core_level_data : Extract and aggregate data for an entire core level
+extract_data : Unified function to extract component or core level data
+extract_component_data : Convenience wrapper for extracting component data
+extract_core_level_data : Convenience wrapper for extracting aggregated core level data
 
 File Format Support
 -------------------
@@ -618,73 +619,91 @@ def print_report(fit_data, reference="A", core_level=None, parameters=None):
         print_single_core_level(fit_data, reference, parameters=parameters)
 
 
-def extract_component_data(
-    report_dict, component_identifier, parameter="%At Conc", core_level=None
-):
-    """Extract data array for a specific component from a report dictionary.
+def extract_data(report_dict, component=None, core_level=None, parameter=None):
+    """Extract data for a specific component or entire core level.
 
-    This function searches for a component by its label (e.g., "A", "B") or
-    name (e.g., "LiF", "C-C / C-H") and returns the corresponding data array
-    for the specified parameter across all measurements.
+    This unified function provides flexible access to XPS component and core
+    level data. If a component is specified, it behaves like
+    ``extract_component_data()``. If component is "Total" or None, it behaves
+    like ``extract_core_level_data()``, aggregating all components.
 
     Parameters
     ----------
     report_dict : dict
-        Report dictionary from ``read_report_file()``. Can be either single
-        or multi-core level format.
-    component_identifier : str
-        Component label (e.g., "A", "B", "C") or component name
-        (e.g., "LiF", "P-F", "C-C / C-H") to search for.
-    parameter : str, optional
-        Parameter to extract. Common values include:
-        - "%At Conc" (default) - Atomic concentration
-        - "Binding Energy (eV)" or "BE" - Binding energy
-        - "Raw Area" or "Area" - Peak area
-        - "FWHM" - Full width at half maximum
-        Default is "%At Conc".
+        Report dictionary from ``read_report_file()``.
+    component : str, optional
+        Component to extract by name (e.g., "LiF", "C-C / C-H") or label
+        (e.g., "A", "B", "C"). If None or "Total", extracts and aggregates
+        all components in the core level.
     core_level : str, optional
-        Core level name (e.g., "C 1s", "F 1s"). Required for multi-core
-        level reports; ignored for single-core level reports.
+        Core level name to extract from. Required for multi-core reports.
+        For aggregation mode (component=None/"Total"), specifies which core
+        level to aggregate. If omitted with a component identifier, extracts
+        from single-core report.
+    parameter : str, optional
+        If specified, return only this parameter as a 1D array.
+        Supported values: "%At Conc", "At Conc", "Raw Area", "Area",
+        "Binding Energy (eV)", "BE", "FWHM", or any column name from the
+        report. If None (default), returns a dictionary with all available
+        parameters.
 
     Returns
     -------
-    numpy.ndarray or None
-        1D array containing the parameter values across all measurements
-        for the specified component. Returns None if the component or
-        parameter is not found.
+    dict or numpy.ndarray or None
+        If parameter is None: Dictionary containing data with keys depending
+        on mode:
+
+        **Component mode**: "component_label", "component_name", "parameters",
+        plus all numeric parameters for that component.
+
+        **Aggregation mode**: "Atomic Concentration", "Area", "Binding Energy",
+        "FWHM", "n_components", "component_names".
+
+        If parameter is specified: 1D array of values across all measurements.
+
+        Returns None if component or core level is not found.
 
     Examples
     --------
-    Extract atomic concentration for a component in single-core report:
+    Extract single component:
 
     >>> import xps_analysis.xps_processing as xp
-    >>> report = xp.read_report_file("C1s_report.txt")
-    >>> lif_at_conc = xp.extract_component_data(report, "LiF")
-    >>> print(lif_at_conc)
-    [25.3 26.1 24.8 25.9]
+    >>> report = xp.read_report_file("report.txt")
+    >>> lif_data = xp.extract_data(report, component="LiF", core_level="C 1s")
+    >>> lif_conc = xp.extract_data(report, component="LiF",
+    ...                             parameter="At Conc", core_level="C 1s")
 
-    Extract binding energy for a component in multi-core report:
+    Extract total core level (aggregated):
 
-    >>> report = xp.read_report_file("multicore_report.txt")
-    >>> be_values = xp.extract_component_data(
-    ...     report, "C-C / C-H", parameter="BE", core_level="C 1s"
+    >>> c1s_total = xp.extract_data(report, core_level="C 1s")
+    >>> c1s_conc = xp.extract_data(report, core_level="C 1s", parameter="At Conc")
+    >>> # Equivalent to above:
+    >>> c1s_total = xp.extract_data(report, component="Total", core_level="C 1s")
+    >>> c1s_conc = xp.extract_data(
+    ...     report, component="Total", core_level="C 1s", parameter="At Conc"
     ... )
 
-    Extract by component label instead of name:
+    Extract from single-core report:
 
-    >>> at_conc = xp.extract_component_data(report, "A", core_level="F 1s")
+    >>> report = xp.read_report_file("single_core_report.txt")
+    >>> comp_a = xp.extract_data(report, component="A")
+    >>> total = xp.extract_data(report)  # Aggregate all components
 
     Notes
     -----
-    - Searches both "Comp Label" and "Name" fields for the identifier
-    - Parameter name shortcuts are automatically expanded (e.g., "BE" → "Binding Energy (eV)")
-    - For multi-core reports, core_level must be specified
-    - Returns None with a warning if component or parameter not found
+    - When component is None or "Total", aggregates all components in the
+      core level
+    - For multi-core reports, core_level is required when a specific component
+      is requested
+    - Atomic concentrations and areas are summed; binding energy and FWHM
+      are averaged during aggregation
+    - Parameter shortcuts are expanded automatically (e.g., "BE" →
+      "Binding Energy (eV)")
     """
     from .plot_helpers.plot_rendering import get_column_name
 
-    # Expand parameter shortcuts to full names
-    param_full = get_column_name(parameter)
+    # Determine if we're in aggregation mode or component mode
+    is_aggregation_mode = component is None or component == "Total"
 
     # Handle multi-core level reports
     if core_level is not None:
@@ -699,7 +718,7 @@ def extract_component_data(
     else:
         # Check if this is actually a multi-core report
         core_levels = get_core_levels(report_dict)
-        if core_levels:
+        if core_levels and not is_aggregation_mode:
             print(
                 f"Warning: This is a multi-core level report. "
                 f"Please specify core_level parameter. Available: {core_levels}"
@@ -707,215 +726,286 @@ def extract_component_data(
             return None
         data = report_dict
 
-    # Check if parameter exists
-    if param_full not in data:
-        available = get_available_parameters({core_level: data} if core_level else data)
-        print(
-            f"Warning: Parameter '{param_full}' not found. "
-            f"Available numeric parameters: {available['numeric']}"
-        )
-        return None
+    # ========== AGGREGATION MODE ==========
+    if is_aggregation_mode:
+        # Extract component data
+        at_conc = data.get("%At Conc")
+        area = data.get("Raw Area")
+        be = data.get("Binding Energy (eV)")
+        fwhm = data.get("FWHM")
+        names = data.get("Name")
 
-    param_data = data[param_full]
+        if at_conc is None:
+            print(f"Error: No atomic concentration data found")
+            return None
+
+        n_components = at_conc.shape[0]
+        n_measurements = at_conc.shape[1] if at_conc.ndim > 1 else 1
+
+        # Extract component names
+        component_names = []
+        if names is not None:
+            for i in range(n_components):
+                name = names[i, 0] if names.ndim > 1 else names[i]
+                component_names.append(str(name))
+
+        # Initialize result arrays
+        at_conc_sum = np.zeros(n_measurements)
+        area_sum = np.zeros(n_measurements) if area is not None else None
+        be_avg = np.zeros(n_measurements) if be is not None else None
+        fwhm_avg = np.zeros(n_measurements) if fwhm is not None else None
+
+        # Aggregate data
+        be_count = np.zeros(n_measurements)
+        fwhm_count = np.zeros(n_measurements)
+
+        for comp_idx in range(n_components):
+            # Sum atomic concentrations
+            for meas_idx in range(n_measurements):
+                at_conc_val = (
+                    at_conc[comp_idx, meas_idx]
+                    if at_conc.ndim > 1
+                    else at_conc[comp_idx]
+                )
+                if isinstance(at_conc_val, (int, float, np.integer, np.floating)):
+                    at_conc_sum[meas_idx] += float(at_conc_val)
+
+            # Sum areas
+            if area is not None:
+                for meas_idx in range(n_measurements):
+                    area_val = (
+                        area[comp_idx, meas_idx] if area.ndim > 1 else area[comp_idx]
+                    )
+                    if isinstance(area_val, (int, float, np.integer, np.floating)):
+                        area_sum[meas_idx] += float(area_val)
+
+            # Average binding energies
+            if be is not None:
+                for meas_idx in range(n_measurements):
+                    be_val = be[comp_idx, meas_idx] if be.ndim > 1 else be[comp_idx]
+                    if isinstance(be_val, (int, float, np.integer, np.floating)):
+                        be_avg[meas_idx] += float(be_val)
+                        be_count[meas_idx] += 1
+
+            # Average FWHMs
+            if fwhm is not None:
+                for meas_idx in range(n_measurements):
+                    fwhm_val = (
+                        fwhm[comp_idx, meas_idx] if fwhm.ndim > 1 else fwhm[comp_idx]
+                    )
+                    if isinstance(fwhm_val, (int, float, np.integer, np.floating)):
+                        fwhm_avg[meas_idx] += float(fwhm_val)
+                        fwhm_count[meas_idx] += 1
+
+        # Compute averages (avoid division by zero)
+        if be is not None:
+            be_avg = np.divide(
+                be_avg, be_count, out=np.full_like(be_avg, np.nan), where=be_count > 0
+            )
+
+        if fwhm is not None:
+            fwhm_avg = np.divide(
+                fwhm_avg,
+                fwhm_count,
+                out=np.full_like(fwhm_avg, np.nan),
+                where=fwhm_count > 0,
+            )
+
+        # Build result dictionary
+        result = {
+            "Atomic Concentration": at_conc_sum,
+            "n_components": n_components,
+            "component_names": component_names,
+        }
+
+        if area_sum is not None:
+            result["Area"] = area_sum
+
+        if be_avg is not None:
+            result["Binding Energy"] = be_avg
+
+        if fwhm_avg is not None:
+            result["FWHM"] = fwhm_avg
+
+        # If parameter is specified, return just that parameter's array
+        if parameter is not None:
+            # Expand parameter shortcuts to full names
+            param_full = get_column_name(parameter)
+
+            # Map full names to result dictionary keys
+            param_mapping = {
+                "%At Conc": "Atomic Concentration",
+                "Atomic Concentration": "Atomic Concentration",
+                "At Conc": "Atomic Concentration",
+                "Raw Area": "Area",
+                "Area": "Area",
+                "Binding Energy (eV)": "Binding Energy",
+                "Binding Energy": "Binding Energy",
+                "BE": "Binding Energy",
+                "FWHM": "FWHM",
+            }
+
+            # Get the result key for this parameter
+            result_key = param_mapping.get(parameter) or param_mapping.get(param_full)
+
+            if result_key is None:
+                available = [
+                    k
+                    for k in result.keys()
+                    if k not in ["n_components", "component_names"]
+                ]
+                print(
+                    f"Warning: Parameter '{parameter}' not recognized. "
+                    f"Available parameters: {available}"
+                )
+                return None
+
+            if result_key not in result:
+                available = [
+                    k
+                    for k in result.keys()
+                    if k not in ["n_components", "component_names"]
+                ]
+                print(
+                    f"Warning: Parameter '{parameter}' not available. "
+                    f"Available parameters: {available}"
+                )
+                return None
+
+            return result[result_key]
+
+        return result
+
+    # ========== COMPONENT MODE ==========
+    # Get component labels and names
+    comp_labels = data.get("Comp Label")
+    names = data.get("Name")
+
+    # Find the component index
+    comp_index = None
+    comp_label = None
+    comp_name = None
 
     # Search by Comp Label first (typically single letters like A, B, C)
-    comp_labels = data.get("Comp Label")
     if comp_labels is not None:
         for i in range(comp_labels.shape[0]):
             label = comp_labels[i, 0] if comp_labels.ndim > 1 else comp_labels[i]
-            if str(label) == str(component_identifier):
-                return param_data[i, :]
+            if str(label) == str(component):
+                comp_index = i
+                comp_label = str(label)
+                # Get component name too
+                if names is not None:
+                    name = names[i, 0] if names.ndim > 1 else names[i]
+                    comp_name = str(name)
+                break
 
-    # Search by Name (chemical species names)
-    names = data.get("Name")
-    if names is not None:
+    # If not found by label, search by Name
+    if comp_index is None and names is not None:
         for i in range(names.shape[0]):
             name = names[i, 0] if names.ndim > 1 else names[i]
-            if str(name) == str(component_identifier):
-                return param_data[i, :]
+            if str(name) == str(component):
+                comp_index = i
+                comp_name = str(name)
+                # Get component label too
+                if comp_labels is not None:
+                    label = (
+                        comp_labels[i, 0] if comp_labels.ndim > 1 else comp_labels[i]
+                    )
+                    comp_label = str(label)
+                break
 
     # Component not found
-    if names is not None and comp_labels is not None:
-        available_labels = [
-            str(comp_labels[i, 0] if comp_labels.ndim > 1 else comp_labels[i])
-            for i in range(comp_labels.shape[0])
-        ]
-        available_names = [
-            str(names[i, 0] if names.ndim > 1 else names[i])
-            for i in range(names.shape[0])
-        ]
-        print(
-            f"Warning: Component '{component_identifier}' not found.\n"
-            f"Available labels: {available_labels}\n"
-            f"Available names: {available_names}"
-        )
-    else:
-        print(f"Warning: Component '{component_identifier}' not found.")
-
-    return None
-
-
-def extract_core_level_data(report_dict, core_level):
-    """Extract and aggregate data for an entire core level.
-
-    This function aggregates component data to provide core level totals and
-    averages. Atomic concentrations and areas are summed across all components,
-    while binding energy and FWHM are averaged across components.
-
-    Parameters
-    ----------
-    report_dict : dict
-        Report dictionary from ``read_report_file()``. Must be a multi-core
-        level report (see Notes).
-    core_level : str
-        Core level name to aggregate (e.g., "C 1s", "F 1s", "O 1s").
-
-    Returns
-    -------
-    dict
-        Dictionary containing aggregated core level data with the following keys:
-        - "Atomic Concentration": 1D array of summed atomic concentrations across
-          all components in this core level, one value per measurement
-        - "Area": 1D array of summed peak areas across all components
-        - "Binding Energy": 1D array of average binding energies across components
-        - "FWHM": 1D array of average FWHMs across components
-        - "n_components": Integer count of components in this core level
-        - "component_names": List of component names in this core level
-
-    Examples
-    --------
-    Aggregate a core level from a multi-core report:
-
-    >>> import xps_analysis.xps_processing as xp
-    >>> report = xp.read_report_file("multicore_report.txt")
-    >>> c1s_data = xp.extract_core_level_data(report, "C 1s")
-    >>> print(f"Total C 1s concentration: {c1s_data['Atomic Concentration']}")
-    >>> print(f"Number of components: {c1s_data['n_components']}")
-    >>> print(f"Average BE: {c1s_data['Binding Energy']}")
-
-    Extract and compare multiple core levels:
-
-    >>> core_levels = xp.get_core_levels(report)
-    >>> aggregated = {}
-    >>> for core in core_levels:
-    ...     aggregated[core] = xp.extract_core_level_data(report, core)
-    >>>
-    >>> # Compare total concentrations
-    >>> for core, data in aggregated.items():
-    ...     print(f"{core}: {data['Atomic Concentration'][0]:.1f}%")
-
-    Notes
-    -----
-    This function is designed for multi-core level reports where you want to
-    treat all components in a core level as a single entity. For single-core
-    reports or to work with individual components, use ``extract_component_data()``.
-
-    Aggregation rules:
-    - **Atomic Concentration** and **Area**: Summed across components
-    - **Binding Energy** and **FWHM**: Averaged across components
-    - Only numeric values are included in aggregations
-    """
-    # Check if core_level exists
-    if core_level not in report_dict:
-        available = get_core_levels(report_dict)
-        print(
-            f"Warning: Core level '{core_level}' not found. " f"Available: {available}"
-        )
-        return None
-
-    data = report_dict[core_level]
-
-    # Extract component data
-    at_conc = data.get("%At Conc")
-    area = data.get("Raw Area")
-    be = data.get("Binding Energy (eV)")
-    fwhm = data.get("FWHM")
-    names = data.get("Name")
-
-    if at_conc is None:
-        print(f"Error: No atomic concentration data found in {core_level}")
-        return None
-
-    n_components = at_conc.shape[0]
-    n_measurements = at_conc.shape[1] if at_conc.ndim > 1 else 1
-
-    # Extract component names
-    component_names = []
-    if names is not None:
-        for i in range(n_components):
-            name = names[i, 0] if names.ndim > 1 else names[i]
-            component_names.append(str(name))
-
-    # Initialize result arrays
-    at_conc_sum = np.zeros(n_measurements)
-    area_sum = np.zeros(n_measurements) if area is not None else None
-    be_avg = np.zeros(n_measurements) if be is not None else None
-    fwhm_avg = np.zeros(n_measurements) if fwhm is not None else None
-
-    # Aggregate data
-    be_count = np.zeros(n_measurements)
-    fwhm_count = np.zeros(n_measurements)
-
-    for comp_idx in range(n_components):
-        # Sum atomic concentrations
-        for meas_idx in range(n_measurements):
-            at_conc_val = (
-                at_conc[comp_idx, meas_idx] if at_conc.ndim > 1 else at_conc[comp_idx]
+    if comp_index is None:
+        if names is not None and comp_labels is not None:
+            available_labels = [
+                str(comp_labels[i, 0] if comp_labels.ndim > 1 else comp_labels[i])
+                for i in range(comp_labels.shape[0])
+            ]
+            available_names = [
+                str(names[i, 0] if names.ndim > 1 else names[i])
+                for i in range(names.shape[0])
+            ]
+            print(
+                f"Warning: Component '{component}' not found.\n"
+                f"Available labels: {available_labels}\n"
+                f"Available names: {available_names}"
             )
-            if isinstance(at_conc_val, (int, float, np.integer, np.floating)):
-                at_conc_sum[meas_idx] += float(at_conc_val)
+        else:
+            print(f"Warning: Component '{component}' not found.")
+        return None
 
-        # Sum areas
-        if area is not None:
-            for meas_idx in range(n_measurements):
-                area_val = area[comp_idx, meas_idx] if area.ndim > 1 else area[comp_idx]
-                if isinstance(area_val, (int, float, np.integer, np.floating)):
-                    area_sum[meas_idx] += float(area_val)
+    # If parameter is specified, return just that parameter's array
+    if parameter is not None:
+        # Expand parameter shortcuts to full names
+        param_full = get_column_name(parameter)
 
-        # Average binding energies
-        if be is not None:
-            for meas_idx in range(n_measurements):
-                be_val = be[comp_idx, meas_idx] if be.ndim > 1 else be[comp_idx]
-                if isinstance(be_val, (int, float, np.integer, np.floating)):
-                    be_avg[meas_idx] += float(be_val)
-                    be_count[meas_idx] += 1
+        # Check if parameter exists
+        if param_full not in data:
+            available = get_available_parameters(
+                {core_level: data} if core_level else data
+            )
+            print(
+                f"Warning: Parameter '{param_full}' not found. "
+                f"Available numeric parameters: {available['numeric']}"
+            )
+            return None
 
-        # Average FWHMs
-        if fwhm is not None:
-            for meas_idx in range(n_measurements):
-                fwhm_val = fwhm[comp_idx, meas_idx] if fwhm.ndim > 1 else fwhm[comp_idx]
-                if isinstance(fwhm_val, (int, float, np.integer, np.floating)):
-                    fwhm_avg[meas_idx] += float(fwhm_val)
-                    fwhm_count[meas_idx] += 1
-
-    # Compute averages (avoid division by zero)
-    if be is not None:
-        be_avg = np.divide(
-            be_avg, be_count, out=np.full_like(be_avg, np.nan), where=be_count > 0
+        param_data = data[param_full]
+        return (
+            param_data[comp_index, :] if param_data.ndim > 1 else param_data[comp_index]
         )
 
-    if fwhm is not None:
-        fwhm_avg = np.divide(
-            fwhm_avg,
-            fwhm_count,
-            out=np.full_like(fwhm_avg, np.nan),
-            where=fwhm_count > 0,
-        )
-
-    # Build result dictionary
+    # Return full dictionary with all available parameters for this component
     result = {
-        "Atomic Concentration": at_conc_sum,
-        "n_components": n_components,
-        "component_names": component_names,
+        "component_label": comp_label,
+        "component_name": comp_name,
+        "parameters": [],
     }
 
-    if area_sum is not None:
-        result["Area"] = area_sum
+    # Add all available parameters for this component
+    for key, values in data.items():
+        if key in ("Name", "Comp Label", "Doublet Group", "Sample"):
+            continue  # Skip metadata columns
 
-    if be_avg is not None:
-        result["Binding Energy"] = be_avg
-
-    if fwhm_avg is not None:
-        result["FWHM"] = fwhm_avg
+        if isinstance(values, np.ndarray) and values.shape[0] > comp_index:
+            try:
+                param_values = (
+                    values[comp_index, :] if values.ndim > 1 else values[comp_index]
+                )
+                # Store with a friendly key name
+                result[key] = param_values
+                result["parameters"].append(key)
+            except (IndexError, TypeError):
+                pass
 
     return result
+
+
+# Convenience aliases for backward compatibility
+def extract_component_data(
+    report_dict, component_identifier, parameter=None, core_level=None
+):
+    """Extract data array for a specific component by name or label.
+
+    **Convenience wrapper for** ``extract_data(component=...)``.
+
+    See ``extract_data()`` for full documentation.
+    """
+    return extract_data(
+        report_dict,
+        component=component_identifier,
+        core_level=core_level,
+        parameter=parameter,
+    )
+
+
+def extract_core_level_data(report_dict, core_level, parameter=None):
+    """Extract and aggregate data for an entire core level.
+
+    **Convenience wrapper for** ``extract_data(component="Total")``.
+
+    See ``extract_data()`` for full documentation.
+    """
+    return extract_data(
+        report_dict, component="Total", core_level=core_level, parameter=parameter
+    )
