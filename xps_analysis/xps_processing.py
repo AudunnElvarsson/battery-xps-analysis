@@ -747,67 +747,18 @@ def extract_data(report_dict, component=None, core_level=None, parameter=None):
                 name = names[i, 0] if names.ndim > 1 else names[i]
                 component_names.append(str(name))
 
-        # Initialize result arrays
-        at_conc_sum = np.zeros(n_measurements)
-        area_sum = np.zeros(n_measurements) if area is not None else None
-        be_avg = np.zeros(n_measurements) if be is not None else None
-        fwhm_avg = np.zeros(n_measurements) if fwhm is not None else None
+        # Aggregate data using nansum and nanmean to handle NaN values correctly
+        # Sum atomic concentrations (ignoring NaN values)
+        at_conc_sum = np.nansum(at_conc, axis=0)
 
-        # Aggregate data
-        be_count = np.zeros(n_measurements)
-        fwhm_count = np.zeros(n_measurements)
+        # Sum areas (ignoring NaN values)
+        area_sum = np.nansum(area, axis=0) if area is not None else None
 
-        for comp_idx in range(n_components):
-            # Sum atomic concentrations
-            for meas_idx in range(n_measurements):
-                at_conc_val = (
-                    at_conc[comp_idx, meas_idx]
-                    if at_conc.ndim > 1
-                    else at_conc[comp_idx]
-                )
-                if isinstance(at_conc_val, (int, float, np.integer, np.floating)):
-                    at_conc_sum[meas_idx] += float(at_conc_val)
+        # Average binding energies (ignoring NaN values)
+        be_avg = np.nanmean(be, axis=0) if be is not None else None
 
-            # Sum areas
-            if area is not None:
-                for meas_idx in range(n_measurements):
-                    area_val = (
-                        area[comp_idx, meas_idx] if area.ndim > 1 else area[comp_idx]
-                    )
-                    if isinstance(area_val, (int, float, np.integer, np.floating)):
-                        area_sum[meas_idx] += float(area_val)
-
-            # Average binding energies
-            if be is not None:
-                for meas_idx in range(n_measurements):
-                    be_val = be[comp_idx, meas_idx] if be.ndim > 1 else be[comp_idx]
-                    if isinstance(be_val, (int, float, np.integer, np.floating)):
-                        be_avg[meas_idx] += float(be_val)
-                        be_count[meas_idx] += 1
-
-            # Average FWHMs
-            if fwhm is not None:
-                for meas_idx in range(n_measurements):
-                    fwhm_val = (
-                        fwhm[comp_idx, meas_idx] if fwhm.ndim > 1 else fwhm[comp_idx]
-                    )
-                    if isinstance(fwhm_val, (int, float, np.integer, np.floating)):
-                        fwhm_avg[meas_idx] += float(fwhm_val)
-                        fwhm_count[meas_idx] += 1
-
-        # Compute averages (avoid division by zero)
-        if be is not None:
-            be_avg = np.divide(
-                be_avg, be_count, out=np.full_like(be_avg, np.nan), where=be_count > 0
-            )
-
-        if fwhm is not None:
-            fwhm_avg = np.divide(
-                fwhm_avg,
-                fwhm_count,
-                out=np.full_like(fwhm_avg, np.nan),
-                where=fwhm_count > 0,
-            )
+        # Average FWHMs (ignoring NaN values)
+        fwhm_avg = np.nanmean(fwhm, axis=0) if fwhm is not None else None
 
         # Build result dictionary
         result = {
