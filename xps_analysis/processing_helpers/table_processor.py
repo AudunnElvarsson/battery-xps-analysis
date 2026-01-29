@@ -64,11 +64,14 @@ def has_dataset_column(header):
 
 
 def label_spin_orbit_doublets(core_data):
-    """Add spin-orbit suffixes to duplicate component names.
+    """Add spin-orbit suffixes to duplicate component names and detect existing doublets.
 
     For components with identical names (e.g., P-F appearing twice for P 2p),
     this adds suffixes like " (3/2)" and " (1/2)" to distinguish the
     spin-orbit components. The first occurrence is the more intense 3/2 peak.
+
+    Also detects components that already have spin-orbit suffixes and marks
+    them as doublet pairs (e.g., "P-F (3/2)" and "P-F (1/2)").
 
     Parameters
     ----------
@@ -128,6 +131,27 @@ def label_spin_orbit_doublets(core_data):
         name_array = np.array(names, dtype=object)
 
     core_data["Name"] = name_array
+
+    # Detect components that already have spin-orbit suffixes
+    # Look for pairs like "X (3/2)" and "X (1/2)"
+    existing_doublets = {}  # Maps base name -> list of indices
+    for i, name in enumerate(names):
+        if " (3/2)" in name:
+            base_name = name.replace(" (3/2)", "")
+            if base_name not in existing_doublets:
+                existing_doublets[base_name] = {"3/2": None, "1/2": None}
+            existing_doublets[base_name]["3/2"] = i
+        elif " (1/2)" in name:
+            base_name = name.replace(" (1/2)", "")
+            if base_name not in existing_doublets:
+                existing_doublets[base_name] = {"3/2": None, "1/2": None}
+            existing_doublets[base_name]["1/2"] = i
+
+    # Add to doublet_groups any base names that have both 3/2 and 1/2 components
+    for base_name, indices in existing_doublets.items():
+        if indices["3/2"] is not None and indices["1/2"] is not None:
+            if base_name not in doublet_groups:
+                doublet_groups.append(base_name)
 
     # Store doublet grouping information
     if doublet_groups:
