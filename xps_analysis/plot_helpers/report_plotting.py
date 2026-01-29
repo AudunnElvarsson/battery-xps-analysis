@@ -88,19 +88,22 @@ def _safe_ratio(numerator, denominator):
     return float(numerator) / float(denominator)
 
 
-def _sum_doublet_areas(core_data, col_full):
-    """Sum areas for spin-orbit doublet components.
+def _sum_doublet_values(core_data, col_full):
+    """Sum numeric values for spin-orbit doublet components.
 
     For components marked as doublets (e.g., P-F (3/2) and P-F (1/2)),
-    sum their areas and create a new dataset with one entry per doublet pair.
+    sum their values and create a new dataset with one entry per doublet pair.
     Non-doublet components are kept as-is.
+
+    This function works for any numeric column including areas, atomic
+    concentrations, and other fit parameters.
 
     Parameters
     ----------
     core_data : dict
         Core level data dictionary.
     col_full : str
-        Column name to sum (e.g., "Raw Area").
+        Column name to sum (e.g., "Raw Area", "%At Conc").
 
     Returns
     -------
@@ -120,8 +123,8 @@ def _sum_doublet_areas(core_data, col_full):
     if not has_doublets:
         return core_data
 
-    # Get the area array
-    area_array = np.array(core_data[col_full], dtype=object)
+    # Get the data array for the specified column
+    data_array = np.array(core_data[col_full], dtype=object)
     name_array = np.array(core_data["Name"], dtype=object)
 
     # Identify which rows to keep and which to sum
@@ -152,10 +155,10 @@ def _sum_doublet_areas(core_data, col_full):
             processed_groups.add(group)
 
             # Create summed row
-            if area_array.ndim == 1:
-                summed_area = area_array[idx1] + area_array[idx2]
+            if data_array.ndim == 1:
+                summed_value = data_array[idx1] + data_array[idx2]
             else:
-                summed_area = area_array[idx1] + area_array[idx2]
+                summed_value = data_array[idx1] + data_array[idx2]
 
             new_rows.append(idx1)  # Use first component's index as template
             new_names.append(group)  # Use base name without suffix
@@ -163,9 +166,9 @@ def _sum_doublet_areas(core_data, col_full):
     # Create new core_data with summed doublets
     summed_data = core_data.copy()
 
-    # Build new area array
-    if area_array.ndim == 1:
-        new_area = []
+    # Build new data array
+    if data_array.ndim == 1:
+        new_data = []
         for i, orig_idx in enumerate(new_rows):
             group = str(doublet_groups[orig_idx])
             if group != "" and group in processed_groups:
@@ -174,16 +177,16 @@ def _sum_doublet_areas(core_data, col_full):
                     j for j, g in enumerate(doublet_groups) if str(g) == group
                 ]
                 summed = sum(
-                    area_array[j]
+                    data_array[j]
                     for j in doublet_indices
-                    if isinstance(area_array[j], (int, float, np.integer, np.floating))
+                    if isinstance(data_array[j], (int, float, np.integer, np.floating))
                 )
-                new_area.append(summed)
+                new_data.append(summed)
             else:
-                new_area.append(area_array[orig_idx])
-        summed_data[col_full] = np.array(new_area, dtype=object)
+                new_data.append(data_array[orig_idx])
+        summed_data[col_full] = np.array(new_data, dtype=object)
     else:
-        new_area = []
+        new_data = []
         for i, orig_idx in enumerate(new_rows):
             group = str(doublet_groups[orig_idx])
             if group != "" and group in processed_groups:
@@ -191,16 +194,16 @@ def _sum_doublet_areas(core_data, col_full):
                 doublet_indices = [
                     j for j, g in enumerate(doublet_groups) if str(g) == group
                 ]
-                summed_row = np.zeros_like(area_array[orig_idx], dtype=float)
+                summed_row = np.zeros_like(data_array[orig_idx], dtype=float)
                 for j in doublet_indices:
-                    for k in range(area_array.shape[1]):
-                        val = area_array[j, k]
+                    for k in range(data_array.shape[1]):
+                        val = data_array[j, k]
                         if isinstance(val, (int, float, np.integer, np.floating)):
                             summed_row[k] += val
-                new_area.append(summed_row)
+                new_data.append(summed_row)
             else:
-                new_area.append(area_array[orig_idx])
-        summed_data[col_full] = np.array(new_area, dtype=object)
+                new_data.append(data_array[orig_idx])
+        summed_data[col_full] = np.array(new_data, dtype=object)
 
     # Update Name array
     if name_array.ndim > 1:
@@ -454,6 +457,10 @@ def plot_single_core_level(
     reference = proc_kwargs.get("reference", None)
     plot_dict = report_dict
 
+    # For area and atomic concentration parameters, sum doublet components before processing
+    if "Area" in col_full or col_full == "%At Conc":
+        plot_dict = _sum_doublet_values(plot_dict, col_full)
+
     # Convert areas to ratios when requested
     if calculate_mode == "ratio" and col_full == "Raw Area":
         # Resolve reference component label (per-core mapping or global string)
@@ -462,7 +469,7 @@ def plot_single_core_level(
         else:
             ref_component_label = reference
 
-        ratio_base = ratio_reference_core_data or report_dict
+        ratio_base = ratio_reference_core_data or plot_dict
         ratio_series = _get_reference_area_series(
             ratio_base, col_full, ref_component_label
         )
@@ -475,14 +482,14 @@ def plot_single_core_level(
             # Use provided reference or default to first component
             ref_label = ref_component_label
             if not ref_label:
-                names = report_dict.get("Name") or report_dict.get("Comp Label")
+                names = plot_dict.get("Name") or plot_dict.get("Comp Label")
                 names = np.array(names, dtype=object) if names is not None else None
                 if names is not None and names.shape[0] > 0:
                     ref_label = str(names[0, 0] if names.ndim > 1 else names[0])
                 else:
                     ref_label = "?"
             plot_dict, col_full = _apply_area_ratio(
-                report_dict, col_full, ratio_series, ref_label
+                plot_dict, col_full, ratio_series, ref_label
             )
 
     # Convert to relative BE if requested
@@ -492,8 +499,9 @@ def plot_single_core_level(
         if isinstance(reference, dict):
             ref_component = reference.get(core_level_name, None)
         if ref_component:
-            plot_dict = convert_to_relative_be(report_dict, col_full, ref_component)
-            if plot_dict is not report_dict:
+            converted_dict = convert_to_relative_be(plot_dict, col_full, ref_component)
+            if "Relative Binding Energy (eV)" in converted_dict:
+                plot_dict = converted_dict
                 col_full = "Relative Binding Energy (eV)"
 
     # Plot the data
@@ -645,9 +653,9 @@ def plot_all_core_levels(
         plot_dict = core_data
         plot_col = col_full
 
-        # For area parameters, sum doublet components before processing
-        if "Area" in col_full:
-            plot_dict = _sum_doublet_areas(plot_dict, col_full)
+        # For area and atomic concentration parameters, sum doublet components before processing
+        if "Area" in col_full or col_full == "%At Conc":
+            plot_dict = _sum_doublet_values(plot_dict, col_full)
 
         # Apply area ratio conversion per core level if requested
         if calculate_mode == "ratio" and col_full == "Raw Area":
@@ -682,7 +690,7 @@ def plot_all_core_levels(
 
         # Normalize atomic concentration per core level if requested
         if normalize_at_conc and col_full == "%At Conc":
-            plot_dict = _normalize_at_conc_per_core(report_dict, core_data, col_full)
+            plot_dict = _normalize_at_conc_per_core(report_dict, plot_dict, col_full)
 
         # Convert to relative BE if needed
         if reference and "Binding Energy" in col_full:
@@ -691,8 +699,11 @@ def plot_all_core_levels(
             if isinstance(reference, dict):
                 ref_component = reference.get(core_level, None)
             if ref_component:
-                plot_dict = convert_to_relative_be(core_data, col_full, ref_component)
-                if plot_dict is not core_data:
+                converted_dict = convert_to_relative_be(
+                    plot_dict, col_full, ref_component
+                )
+                if "Relative Binding Energy (eV)" in converted_dict:
+                    plot_dict = converted_dict
                     plot_col = "Relative Binding Energy (eV)"
 
         # Plot the data
