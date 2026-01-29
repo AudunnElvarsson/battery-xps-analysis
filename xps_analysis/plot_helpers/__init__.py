@@ -54,7 +54,6 @@ from .axis_management import (
     configure_axes,
 )
 from .plot_rendering import (
-    convert_to_relative_be,
     get_column_name,
     update_plot_params,
     should_plot_key,
@@ -78,7 +77,6 @@ __all__ = [
     "ensure_axes_and_main",
     "configure_axes",
     # Plot rendering
-    "convert_to_relative_be",
     "get_column_name",
     "update_plot_params",
     "should_plot_key",

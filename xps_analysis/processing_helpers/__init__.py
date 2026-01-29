@@ -10,6 +10,7 @@ table_processor : Table parsing and row grouping functions
 data_analyzer : Parameter extraction and data analysis
 formatter : Output formatting and table printing
 core_level_extractor : Core level name extraction from file metadata
+data_transformer : Data transformation utilities (normalization, ratios, relative BE)
 
 Public API
 ----------
@@ -34,6 +35,13 @@ table_to_dict_exclude_columns : Convert rows excluding specific columns
 parse_report_rows : Parse report rows handling multi-core format
 label_spin_orbit_doublets : Add spin-orbit suffixes to duplicate component names
 collapse_doublet_components : Sum values for spin-orbit doublet pairs
+
+Data Transformation
+~~~~~~~~~~~~~~~~~~~
+normalize_at_conc_per_core : Normalize atomic concentrations to 100% per core
+calculate_area_ratios : Calculate area ratios relative to reference component
+convert_to_relative_be : Convert binding energies to relative values
+find_component_index : Find component index by label or name
 
 Data Analysis
 ~~~~~~~~~~~~~
@@ -85,6 +93,12 @@ from .formatter import (
     print_single_core_level,
 )
 from .core_level_extractor import extract_core_level
+from .data_transformer import (
+    normalize_at_conc_per_core,
+    calculate_area_ratios,
+    convert_to_relative_be,
+    find_component_index,
+)
 
 __all__ = [
     # File parsing
@@ -102,6 +116,11 @@ __all__ = [
     "parse_report_rows",
     "label_spin_orbit_doublets",
     "collapse_doublet_components",
+    # Data transformation
+    "normalize_at_conc_per_core",
+    "calculate_area_ratios",
+    "convert_to_relative_be",
+    "find_component_index",
     # Data analysis
     "process_parameter",
     "extract_component_names",
