@@ -504,9 +504,9 @@ def table_to_dict_exclude_columns(groups, header, exclude_indices):
     label_idx = None
     name_idx = None
     for idx, h in enumerate(header):
-        if h == "Comp Label":
+        if h.lower() == "comp label":
             label_idx = idx
-        if h == "Name":
+        if h.lower() == "name":
             name_idx = idx
 
     # If we don't have Comp Label, fall back to original behavior
@@ -637,8 +637,11 @@ def parse_report_rows(lines, header_idx, header, raw_header):
         Parsed, cleaned rows (lists of field strings).
     """
     rows = []
-    name_indices = [i for i, h in enumerate(raw_header) if h == "Name"]
-    has_dataset = "Data Set" in header or "Iteration" in header
+    # Case-insensitive indices for 'Name' and detection for dataset column
+    name_indices = [i for i, h in enumerate(raw_header) if h.lower() == "name"]
+    has_dataset = any(
+        h.lower() == "data set" or h.lower() == "iteration" for h in header
+    )
     current_dataset = None
 
     for line in lines[header_idx + 1 :]:
