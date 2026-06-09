@@ -163,8 +163,9 @@ def read_report_file(file_path):
         return None
 
     header, raw_header = clean_header(header_line)
-    header = ["Binding Energy (eV)" if h == "Position" else h for h in header]
-    header = ["RSF" if h == "Library RSF" else h for h in header]
+    # Normalize common header name variations (case-insensitive)
+    header = ["Binding Energy (eV)" if h.lower() == "position" else h for h in header]
+    header = ["RSF" if h.lower() == "library rsf" else h for h in header]
 
     # Parse table rows
     table_rows = parse_report_rows(lines, header_idx, header, raw_header)
@@ -173,17 +174,23 @@ def read_report_file(file_path):
     if has_dataset_column(header):
         # Multi-core level format
         # Get the dataset column index - could be "Data Set" or "Iteration"
-        if "Data Set" in header:
-            dataset_idx = header.index("Data Set")
-        elif "Iteration" in header:
-            dataset_idx = header.index("Iteration")
+        # Find dataset/iteration column index in a case-insensitive way
+        dataset_idx = None
+        for idx, h in enumerate(header):
+            if h.lower() == "data set":
+                dataset_idx = idx
+                break
+            if h.lower() == "iteration":
+                dataset_idx = idx
+                break
         else:
             # This shouldn't happen if has_dataset_column returned True
             print(
                 "Error: Multi-core format detected but no Data Set/Iteration column found."
             )
             return None
-        tag_idx = header.index("Tag")
+        # Tag column may have different casing; find it case-insensitively
+        tag_idx = next((i for i, h in enumerate(header) if h.lower() == "tag"), None)
 
         # Group by dataset and core level
         core_level_groups = group_rows_by_dataset(table_rows, dataset_idx, tag_idx)
@@ -207,7 +214,10 @@ def read_report_file(file_path):
 
     else:
         # Original single core level format
-        name_idx = header.index("Comp Label")
+        # Find Comp Label index case-insensitively
+        name_idx = next(
+            (i for i, h in enumerate(header) if h.lower() == "comp label"), None
+        )
         groups = group_rows_by_name(table_rows, name_idx)
         result_dict = table_to_dict(groups, header)
         # Label spin-orbit doublets

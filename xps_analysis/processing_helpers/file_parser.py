@@ -37,9 +37,13 @@ def find_header(lines, startswith_tuple, required_substring=None):
     tuple[str | None, int | None]
         (header_line, index) if found, otherwise (None, None).
     """
+    # Perform case-insensitive matching to accept variations like "Data set"
+    lower_starts = tuple(s.lower() for s in startswith_tuple)
+    req_lower = required_substring.lower() if required_substring is not None else None
     for i, line in enumerate(lines):
-        if line.strip().startswith(startswith_tuple):
-            if required_substring is None or required_substring in line:
+        stripped = line.strip()
+        if stripped.lower().startswith(lower_starts):
+            if req_lower is None or req_lower in stripped.lower():
                 return line, i
     return None, None
 

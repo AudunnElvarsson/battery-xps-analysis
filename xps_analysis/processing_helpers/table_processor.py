@@ -61,7 +61,9 @@ def has_dataset_column(header):
     bool
         True if 'Data Set' or 'Iteration' column is present, False otherwise.
     """
-    return "Data Set" in header or "Iteration" in header
+    # Perform case-insensitive checks to accept variations like "Data set"
+    lowered = [h.lower() for h in header]
+    return "data set" in lowered or "iteration" in lowered
 
 
 def label_spin_orbit_doublets(core_data):
