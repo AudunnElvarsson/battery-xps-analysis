@@ -102,6 +102,9 @@ def plot_single_core_level(
             component if not specified.
         - 'show_labels' (bool): If True, prepend component labels (e.g., "A", "B")
             to component names in legend (default False).
+        - 'normalize_at_conc_per_core' (bool): When plotting atomic
+            concentration, normalize components within the current core level so
+            they sum to 100% (default False).
     plot_kwargs : dict or None
         Plot styling options forwarded to matplotlib plot.
     save_kwargs : dict
@@ -136,6 +139,10 @@ def plot_single_core_level(
     # For area and atomic concentration parameters, sum doublet components before processing
     if "Area" in col_full or col_full == "%At Conc":
         plot_dict = collapse_doublet_components(plot_dict, col_full)
+
+    # Normalize atomic concentration values within this core level if requested
+    if proc_kwargs.get("normalize_at_conc_per_core", False) and col_full == "%At Conc":
+        plot_dict = normalize_at_conc_per_core(plot_dict, col_full)
 
     # Convert areas to ratios when requested
     if calculate_mode == "ratio" and col_full == "Raw Area":
