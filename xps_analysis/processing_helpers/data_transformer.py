@@ -89,7 +89,9 @@ def normalize_at_conc_per_core(core_data, col_full="%At Conc"):
             indices = []
             for comp_idx in range(at_conc_data.shape[0]):
                 val = at_conc_data[comp_idx, measurement_idx]
-                if isinstance(val, (int, float, np.floating)):
+                if isinstance(
+                    val, (int, float, np.integer, np.floating)
+                ) and np.isfinite(val):
                     values.append(val)
                     indices.append(comp_idx)
 
